@@ -17,11 +17,9 @@ ks.p12
 *.pem
 *.der
 *.key
-# The audit (AUDIT.md, audit/) quotes the removed keystore password and the
-# vulnerable code, and is not written for users.  tools/package.sh already
-# excludes it from the archive it builds; this keeps 'git add -A' + commit from
-# putting it into a history that a clone or a hand-off would then carry.  The
-# files stay in the working tree: they are the record of why this tree changed.
-AUDIT.md
-audit/
+# The audit (AUDIT.md, audit/PLAN.json) is tracked: README.md, CHANGELOG.md and
+# VERIFICATION.md all cite it, and a reader deciding whether to run a root tool
+# on their only phone is entitled to the evidence and the known limitations.
+# tools/package.sh still excludes it from the RELEASE archive it builds, because
+# that archive is for users while this is the record of why the tree changed.
 
