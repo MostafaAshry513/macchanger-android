@@ -1,0 +1,7 @@
+ks.jks
+app-signed.apk
+app-unsigned.apk
+app-aligned.apk
+build/
+classes.dex
+*.tmp
