@@ -160,13 +160,17 @@ jobs:
           KS_PASS="${KEYSTORE_PASSWORD:-$(cat "$RUNNER_TEMP/throwaway.pass")}"
           AJ="$ANDROID_SDK_ROOT/platforms/android-$API/android.jar"
           OUT="MacChanger-${{ steps.key.outputs.have == 'yes' && 'release' || 'TEST-ONLY' }}.apk"
+          # bash, not ./, because build.sh's shebang points at Termux's own bash:
+          # a runner has no /data/data/com.termux, and the kernel fails with
+          # "cannot execute: required file not found" before the script's own
+          # bash check can run. Running it through bash satisfies that check.
           # AJ is what javac and d8 compile against; FRAMEWORK is the second -I for
           # aapt, which is the same jar here because the only framework references in
           # the manifest are a style and a theme.
           AJ="$AJ" FRAMEWORK="$AJ" \
           KS="$KEYSTORE" KS_PASS="$KS_PASS" \
           RELEASE_CERT_SHA256="${EXPECTED_CERT:-}" \
-          OUT="$OUT" ./app/build.sh
+          OUT="$OUT" bash ./app/build.sh
           echo "apk=$OUT" >> "$GITHUB_OUTPUT"
 
       # build.sh has 16 gates of its own; these are the headline properties, printed

@@ -87,6 +87,12 @@ The full record layout, and what a wipe destroys, is in [SAFETY.md](SAFETY.md).
 Run it with `./build.sh`, **not** `sh build.sh`: the script uses bash-only features
 and re-execs itself under bash if a POSIX shell got there first.
 
+Off a phone, `./build.sh` cannot run at all: its shebang points at Termux's own
+`/data/data/com.termux/files/usr/bin/bash`, which no ordinary Linux box has, and the
+kernel fails with `cannot execute: required file not found` before the script's own
+bash check can help. There, invoke it as **`bash app/build.sh`**, which satisfies the
+same check. (CI does exactly that — see [Or let CI build it](#or-let-ci-build-it).)
+
 ```bash
 pkg install openjdk-21 aapt apksigner d8 zipalign coreutils
 cd app
@@ -107,8 +113,9 @@ KS=/path/to/ks.p12 KS_PASS='...' ./build.sh      # -> app-signed.apk
   `/system/framework/framework-res.apk` (override it with `FRAMEWORK=`). This
   project has no `res/` of its own, so that table is where the manifest's
   `@android:` style and theme come from. An SDK `android.jar` works there too —
-  verified: `AJ="$SDK/platforms/android-30/android.jar" FRAMEWORK="$AJ" ./build.sh`
-  builds on a plain Linux box with no device attached, and so does API 34.
+  verified: `AJ="$SDK/platforms/android-30/android.jar" FRAMEWORK="$AJ" bash build.sh`
+  builds on a plain Linux box with no device attached, and so does API 34. Note the
+  `bash`: see the shebang note above.
   What does **not** work off-device is an `@android:` **drawable** reference:
   `aapt1` rejects it with `attribute value reference does not exist`, whatever the
   platform version. That is why the manifest declares no launcher icon, and why

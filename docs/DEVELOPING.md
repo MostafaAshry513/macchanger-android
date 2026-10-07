@@ -24,7 +24,9 @@ MacChanger/
   app/
     AndroidManifest.xml      zero <uses-permission> elements - deliberate
     src/com/macchanger/MainActivity.java
-    build.sh                 on-device build script (Termux, run as ./build.sh)
+    build.sh                 on-device build script (Termux; `./build.sh` on the
+                             phone, `bash build.sh` anywhere else — the shebang is
+                             Termux's own bash and only exists there)
   cli/
     macchanger.sh            standalone CLI, root, MediaTek only
   prebuilt/
