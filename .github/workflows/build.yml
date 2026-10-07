@@ -38,7 +38,13 @@ jobs:
     name: offline gates
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth 0: tools/stubcompile/selftest.sh tests the gate against an
+      # independent revision from this repository's history (the root commit). A
+      # shallow checkout has only the working tree, in which case that control skips
+      # instead of running - correct, but a weaker test. Full history keeps it real.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:

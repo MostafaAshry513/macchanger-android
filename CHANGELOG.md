@@ -183,3 +183,10 @@ Behaviour the next build changes (documentation in `README.md` and
 * `tools/checks/checks.sh` now requires that working stamping mechanism (computation,
   substitution and both read-back gates) instead of the aapt flags that look right
   but do nothing.
+* `tools/stubcompile/selftest.sh` required a sibling `../.pristine/` directory for its
+  second control, which only ever existed in the container the harness was written
+  in: the control failed in every fresh clone, and CI found it on the first run. It
+  now takes the independent baseline from the repository's own root commit through
+  `git`, and skips that control with a note — rather than failing — when the checkout
+  holds no distinct revision, as a shallow clone does not. The suite still fails when
+  the gate it checks is broken, which is verified in the same run.

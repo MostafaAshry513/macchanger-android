@@ -159,7 +159,7 @@ each control, the exit status **and** that the diagnostics mention the injected 
 | # | control | expected |
 |---|---------|----------|
 | 1 | the working-tree `MainActivity.java` | PASS, exit 0 |
-| 2 | the `.pristine` baseline `MainActivity.java` | PASS, exit 0 |
+| 2 | an **independent baseline** `MainActivity.java`: a sibling `../.pristine/` when present, otherwise the repository's root commit read through `git` | PASS, exit 0. Skipped with a note — never failed — when the checkout holds no distinct revision (a shallow clone does not), because compiling the working tree twice would prove nothing |
 | 3 | an unmodified **copy** in a temp dir | PASS — so later failures cannot be blamed on the copy |
 | 4 | copy + a stray `}` (syntax error) | FAIL, diagnostics say `error:` |
 | 5 | copy + an undefined symbol | FAIL, diagnostics name that symbol |

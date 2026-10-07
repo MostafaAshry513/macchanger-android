@@ -10,7 +10,10 @@
 #
 # Controls run, in order:
 #   1. the working-tree MainActivity.java            -> must PASS (exit 0)
-#   2. the .pristine baseline MainActivity.java      -> must PASS (exit 0)
+#   2. an independent baseline MainActivity.java    -> must PASS (exit 0), taken from
+#      a sibling ../.pristine/ if present (the audit container) or otherwise from this
+#      repository's root commit through git; skipped with a note, never failed, when
+#      no distinct revision exists in the checkout (a shallow clone)
 #   3. an unmodified *copy* in a temp dir            -> must PASS (so a later failure
 #                                                       cannot be blamed on the copy)
 #   4. the copy + a stray '}'   (syntax error)       -> must FAIL, mentioning error:
@@ -33,6 +36,7 @@ set -u
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CHECK="$SCRIPT_DIR/check.sh"
+REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 WORKING_TARGET="$SCRIPT_DIR/../../app/src/com/macchanger/MainActivity.java"
 PRISTINE_TARGET="$SCRIPT_DIR/../../../.pristine/app/src/com/macchanger/MainActivity.java"
 
@@ -40,6 +44,39 @@ FAILURES=0
 LOG_N=0
 
 ok() { echo "selftest: ok    - $1"; }
+
+note() { echo "selftest: note  - $1"; }
+
+# The independent revision used by control 2.  It used to be a sibling ../.pristine/
+# directory, which only ever existed in the container where this suite was written:
+# every fresh clone - a fork, the author's own machine, CI - failed control 2 with
+# "pristine baseline not found".  It now falls back to the repository's own root
+# commit, and skips (informational, NOT a failure) when no distinct revision can be
+# had: in a shallow clone the "root commit" is the working tree, and compiling the
+# same bytes twice would prove nothing.  The gate's discriminating power does not
+# depend on this control - the working-tree baseline and the injected-error controls
+# below are what establish that check.sh can both pass and fail.
+baseline_target() {
+    if [ -f "$PRISTINE_TARGET" ]; then printf '%s' "$PRISTINE_TARGET"; return 0; fi
+    command -v git >/dev/null 2>&1 || return 1
+    _root=$(git -C "$REPO_ROOT" rev-list --max-parents=0 HEAD 2>/dev/null | tail -n 1)
+    [ -n "$_root" ] || return 1
+    _out="$TMP/baseline/MainActivity.java"
+    mkdir -p "$TMP/baseline" || return 1
+    # The file must be NAMED MainActivity.java: javac refuses a public class in a
+    # file of any other name, which is the same reason the copy control below uses
+    # $TMP/copy/MainActivity.java rather than a suffixed name.
+    git -C "$REPO_ROOT" show "$_root:app/src/com/macchanger/MainActivity.java" > "$_out" 2>/dev/null || return 1
+    [ -s "$_out" ] || return 1
+    # Diagnostics go to stderr: this function's stdout is the path, and it is called
+    # through a command substitution.
+    if [ -f "$WORKING_TARGET" ] && cmp -s "$_out" "$WORKING_TARGET"; then
+        echo "selftest: note  - the only revision in this checkout is the working tree, so an independent baseline cannot be tested here" >&2
+        return 1
+    fi
+    echo "selftest: note  - independent baseline taken from $(git -C "$REPO_ROOT" rev-parse --short "$_root")" >&2
+    printf '%s' "$_out"
+}
 
 bad() {
     echo "selftest: FAIL  - $1"
@@ -119,10 +156,10 @@ else
     bad "working-tree MainActivity.java not found at $WORKING_TARGET"
 fi
 
-if [ -f "$PRISTINE_TARGET" ]; then
-    expect_pass "pristine baseline MainActivity.java compiles" "$PRISTINE_TARGET"
+if _base=$(baseline_target); then
+    expect_pass "an independent baseline revision compiles" "$_base"
 else
-    bad "pristine baseline not found at $PRISTINE_TARGET"
+    note "no independent baseline revision available here: control skipped, not failed (see the note in this script)"
 fi
 
 # ---------------------------------------------------------------- 3: unmodified copy
