@@ -29,7 +29,7 @@ purpose: an unbuilt source tree has no artefact to hash.
   `8F:ED:CA:F1:8E:92:BB:19:24:E5:DE:1C:BB:A5:EA:6F:8B:31:FB:03:91:08:EE:AF:FC:4F:9C:F5:11:86:F1:AF`
   (`CN=MacChanger`, serial `f95c6faeadff3f8d`, 2048-bit RSA, self-signed,
   SHA384withRSA)
-* Source: commit `5b15188db702bdae171e3172c5f6b37b0ef53435`
+* Source: commit `a82ffee8828585059a6ab3a7b53d2b9dec1c72ca`
   ("pristine MacChanger as shipped") — the pristine tree, i.e. **before** every
   fix described in `AUDIT.md`. The working tree's corrections are not in this
   APK.

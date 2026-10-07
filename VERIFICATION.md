@@ -11,6 +11,13 @@ writing it are recorded rather than hidden: it made the packaged archive stale f
 until I rebuilt it with the tree's own `tools/package.sh` (§1.8), and that rebuild wrote only under
 `/root/macchanger-fixed/dist`, which is outside the frozen tree.
 
+> **About the paths in this document.** It is a record of an audit run inside a
+> disposable Linux container, so it cites absolute paths from that machine: the work tree was
+> `/root/macchanger-fixed/MacChanger` and `/root/macchanger-fixed/.pristine` was an untouched copy of
+> the pre-fix revision — which you can reproduce from this repository's own history with
+> `git worktree add /tmp/pristine a82ffee`. Nothing outside the work tree is published, and the
+> signing key those paths mention is deliberately absent from this repository and from its history.
+
 ## 0. The revision verified
 
 ```
@@ -27,7 +34,7 @@ eb311b0eaf49bd712bbf18f48470a539f39ba5f71196b911b44d0a8d3041cc61  app/build.sh
 1760a8cb0d78ba68c83eed14214f3ee0c77d5144cdcf2c494025d7407937a6da  prebuilt/MacChanger.apk
 ```
 
-Every claim below is against these hashes. `git status` at this revision: HEAD `5b15188`
+Every claim below is against these hashes. `git status` at this revision: HEAD `a82ffee`
 ("pristine MacChanger as shipped"), 10 tracked files, 9 modified/added entries and `tools/`
 untracked — see §2.2.
 
@@ -281,7 +288,7 @@ are none"). One residual that cannot be settled here is recorded in §7.
 
 ```
 $ git log --oneline
-5b15188 pristine MacChanger as shipped
+a82ffee pristine MacChanger as shipped
 $ git ls-files | wc -l
 10
 $ git status --porcelain

@@ -28,7 +28,7 @@ see the note under the table.
 | redirect | how it works | when it is used |
 | --- | --- | --- |
 | `override` | an off-device testing hook the CLI *used* to carry: `MACCHANGER_TEST` plus `MACCHANGER_DIR`, `MACCHANGER_NV`, `MACCHANGER_NET`, announced on stderr. Assertion **A0** checks the gate — setting `MACCHANGER_NV` *without* `MACCHANGER_TEST` must redirect nothing. | only for an older revision that still carries the hook; `auto` selects it then, and `--redirect=override` demands it |
-| `namespace` | `sandbox.sh` runs inside `unshare -m` and bind-mounts `$scenario/nvram`, `$scenario/record` and `$scenario/net` over `/mnt/vendor/nvdata/APCFG/APRDEB`, `/data/adb/macchanger` and `/sys/class/net`, with `tmpfs` over `/mnt`, `/data` and `/sys` so nothing is created outside the namespace. | **the current `cli/`, which has no hook**, and any other revision without one, e.g. `/root/macchanger-fixed/.pristine` |
+| `namespace` | `sandbox.sh` runs inside `unshare -m` and bind-mounts `$scenario/nvram`, `$scenario/record` and `$scenario/net` over `/mnt/vendor/nvdata/APCFG/APRDEB`, `/data/adb/macchanger` and `/sys/class/net`, with `tmpfs` over `/mnt`, `/data` and `/sys` so nothing is created outside the namespace. | **the current `cli/`, which has no hook**, and any other revision without one — e.g. the pre-fix revision from this repository's own history: `git worktree add /tmp/pristine a82ffee` |
 
 **Why the hook is gone, since this suite once depended on it.** The hook let the caller
 choose the calibration path of a root tool, and nothing about the redirected target was
@@ -109,19 +109,22 @@ in prose:
   exit 0), once with `CLITEST_INJECT_FAIL=1`, which registers one deliberately false
   assertion (must exit non-zero and must print that `FAIL` line).
 
-The suite has also been run against the pristine snapshot
-(`CLI=/root/macchanger-fixed/.pristine/cli/macchanger.sh … --redirect=namespace`), where
-**12 of the 18 assertion lines fail** (measured: `clitest: 6 of 18 assertions passed, 12
-failed`): `show` captures a backup (A1), `restore` with no image
-fabricates one and returns 0 (A3), a short image truncates the target (A4), `set` writes
-blind when the live MAC is not in the file (A5) or is already a spoof (A6), that revision
-takes no cross-process lock so `set` writes while the app holds one (A8) and leaves the
-lock behind (A8b), the write lands
-at a hardcoded offset 4 (B1/B2), the driver-ignored case still exits 0 (C1), and all-zero,
-broadcast and multicast MACs are written instead of refused (C3/C4). A7/A7b pass there for a
-different reason — that revision captures no factory image at all — so they say nothing about
-it. That is the audit's
-finding list, reproduced by the harness.
+The suite has also been run against the pre-fix revision from this repository's own
+history (`git worktree add /tmp/pristine a82ffee`, then
+`CLI=/tmp/pristine/cli/macchanger.sh sh tools/clitest/clitest.sh --redirect=namespace`),
+where **15 of the 22 assertion lines fail** (measured:
+`clitest: 7 of 22 assertions passed, 15 failed`): `show` captures a backup (A1), `restore`
+with no image fabricates one and returns 0 (A3), a short image truncates the target (A4),
+`set` writes blind when the live MAC is not in the file (A5) or is already a spoof (A6),
+that revision takes no cross-process lock so `set` writes while the app holds one (A8) and
+leaves the lock behind (A8b), the write lands at a hardcoded offset 4 (B1/B2), the
+driver-ignored case still exits 0 (C1), an intact image holding a locally administered
+value is restored as if it were the factory MAC and `panic` does not exist to refuse it
+(D1/D3), a second positional silently replaces the first (D4), and all-zero, broadcast and
+multicast MACs are written instead of refused (C3/C4). A7/A7b and D2 pass there for a
+different reason — that revision captures no factory image at all, and it writes an image
+uncritically — so those passes say nothing in its favour. That is the audit's finding
+list, reproduced by the harness.
 
 ## Requirements and safety
 

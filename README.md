@@ -1,5 +1,15 @@
 # Mac Changer (rooted Android)
 
+> **Do not install the APK in `prebuilt/` unless you know what it is.** It is the
+> **pre-fix** build, compiled before the audit in `AUDIT.md`: it writes at a
+> hardcoded offset instead of locating the MAC, can truncate the calibration file
+> when it reads a short image, accepts a multicast address, and reports success it
+> has not verified. It is kept only because it is the artifact this project
+> shipped, and its hash is recorded so you can recognise it.
+> **Build your own instead** — on the phone, no PC, no SDK:
+> `cd app && ./build.sh`. Anything this repository says about safety describes the
+> source in this tree, not that binary.
+
 A persistent WiFi MAC changer for rooted Android phones. It finds the vendor
 **NVRAM / persist** file that stores the factory WiFi MAC, backs that file up,
 replaces the MAC bytes **in place**, then restarts WiFi so the driver re-reads
@@ -275,7 +285,7 @@ aapt dump badging prebuilt/MacChanger.apk | head -1
 ```
 
 The shipped APK was built from source commit
-`5b15188db702bdae171e3172c5f6b37b0ef53435` ("pristine MacChanger as shipped") —
+`a82ffee8828585059a6ab3a7b53d2b9dec1c72ca` ("pristine MacChanger as shipped") —
 that is the pre-fix tree, **not** the current one; the current source has not
 been built or signed, so there is no APK for it yet. Its APK SHA-256 and its
 signer certificate SHA-256 are recorded in `CHANGELOG.md`, and that certificate

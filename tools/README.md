@@ -57,7 +57,7 @@ when every artifact passed. Run it on whatever you are about to send, whatever b
 
 ```
 sh tools/package.sh --check /path/to/dist/MacChanger-1.0-vc1.tar.gz
-sh tools/package.sh --check /root/macchanger-fixed            # FAIL: the key is in there
+sh tools/package.sh --check /some/other/directory             # FAIL: scans what is there, keys included
 sh tools/package.sh --check . --allow-audit                   # WARN: tree, for an auditor
 ```
 
