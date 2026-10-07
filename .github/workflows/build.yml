@@ -160,6 +160,11 @@ jobs:
           KS_PASS="${KEYSTORE_PASSWORD:-$(cat "$RUNNER_TEMP/throwaway.pass")}"
           AJ="$ANDROID_SDK_ROOT/platforms/android-$API/android.jar"
           OUT="MacChanger-${{ steps.key.outputs.have == 'yes' && 'release' || 'TEST-ONLY' }}.apk"
+          # The SDK keeps aapt/d8/zipalign/apksigner in build-tools; build.sh expects
+          # all four on PATH, because that is where Termux's packages put them. It
+          # refuses the build with a named list when they are missing, which is how
+          # this line came to exist.
+          export PATH="$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS:$PATH"
           # bash, not ./, because build.sh's shebang points at Termux's own bash:
           # a runner has no /data/data/com.termux, and the kernel fails with
           # "cannot execute: required file not found" before the script's own
