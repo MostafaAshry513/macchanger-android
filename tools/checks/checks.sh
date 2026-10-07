@@ -48,6 +48,28 @@
 #      that need a human (non-persistent ip-link fallback, Android 12+ SSID
 #      limitation) are still present.
 #
+# Checks 8b, 8c, 8d, 8e, 8f and 8g are the doc-versus-code checks, and they read
+# a FILE LIST rather than one hard-coded path: README.md plus every docs/*.md.
+# README.md was restructured into a short front page with the depth in docs/, and
+# a check still reading README.md alone stops verifying its claim the moment that
+# claim moves into docs/ - which is exactly what happened to the WIFI.factory.*
+# sidecar names, whose 'offset' half left the README and took check 8c's third
+# name with it.  Two branches that used to report INFO when the claim was absent
+# (8c's "no sidecar named anywhere", 8e's "no zero-permission claim") are FAILs
+# now: an INFO line asserts nothing and still exits 0, so a claim that moved out
+# of the README went quiet instead of red.  A docs/ file that is missing counts
+# as the claim being missing - the pre-fix revision has no docs/ directory at all
+# and must still fail here, not skip.  README.md stays in every one of those
+# lists, so a load-bearing sentence that leaves the front page still fails
+# loudly; check 8d2 (the tool names) is deliberately README-only, because a tool
+# nobody can find from the front page is a tool nobody runs.
+#
+# 8c asserts the full three-name set, not just the names that happen to survive:
+# deleting a sidecar name from every document used to leave the loop with nothing
+# to test for it and the check still printed PASS, which is the same silent
+# coverage loss in a new shape.  A name the CLI writes that no document states is
+# a FAIL that names it.
+#
 # Requires: POSIX sh, grep, find, sed, sha256sum, awk, and (for the APK check)
 # unzip.  No network, no Android SDK, no Gradle, no busyloop.
 #
@@ -110,6 +132,49 @@ scan() { grep -rn $SCAN_EXCLUDES "$@" "$ROOT" 2>/dev/null; }
 scan_code() {
     grep -rn $SCAN_EXCLUDES --exclude='*.md' --exclude='*.txt' --exclude='*.json' "$@" "$ROOT" 2>/dev/null
 }
+
+# =============================================================================
+# The documentation set the doc-versus-code checks (8b-8g) read.
+#
+# README.md is the front page a beginner reads top to bottom, and it must keep
+# saying the load-bearing things itself; docs/*.md is where the restructure moved
+# the depth.  A claim is allowed to live in either, so the checks read the whole
+# set.  A file that is not there contributes nothing, and the checks that depend
+# on a particular docs/ file say so and FAIL when it is gone: a missing file is a
+# missing claim, never a skip.  README.md itself is not optional either.
+DOC_SET="$ROOT/README.md"
+DOC_SET_DOCS=
+for _ds_f in "$ROOT"/docs/*.md; do
+    [ -f "$_ds_f" ] || continue
+    DOC_SET="$DOC_SET $_ds_f"
+    DOC_SET_DOCS="$DOC_SET_DOCS $_ds_f"
+done
+
+# doc_count ERE [FILE...] - matching lines, default the whole documentation set.
+# Files that do not exist count as zero matches.
+doc_count() {
+    _doc_pat=$1; shift
+    [ $# -gt 0 ] || set -- $DOC_SET
+    _doc_n=0
+    for _doc_f in "$@"; do
+        [ -f "$_doc_f" ] || continue
+        _doc_c=$(grep -cE "$_doc_pat" "$_doc_f" 2>/dev/null)
+        _doc_n=$((_doc_n + ${_doc_c:-0}))
+    done
+    printf '%s\n' "$_doc_n"
+}
+
+# doc_homes ERE - the documentation files that state it, repo-relative and
+# space-separated, so an evidence line says where a claim was actually found
+# instead of asking the reader to trust a label.
+doc_homes() {
+    for _dh_f in $DOC_SET; do
+        if grep -qE "$1" "$_dh_f" 2>/dev/null; then printf '%s ' "${_dh_f#"$ROOT/"}"; fi
+    done
+}
+
+# docs_file NAME - the path of a docs/ file this script names, empty when gone.
+docs_file() { [ -f "$ROOT/docs/$1" ] && printf '%s\n' "$ROOT/docs/$1"; }
 
 printf 'checks: root %s\n' "$ROOT"
 
@@ -453,7 +518,13 @@ else
 fi
 
 # --- 8b. the CLI's scope claim matches the code -----------------------------
-_doc_scope=$(grep -cE 'MediaTek only|MediaTek-only' "$ROOT/README.md" 2>/dev/null)
+# The scope claim now lives in two places: README.md states it on the front page
+# (twice: in the vendor sentence and in the checklist), and the CLI's own
+# documentation, docs/CLI.md, states it in its opening line and again under
+# "MediaTek only".  Both halves are verified; docs/DEVICES.md carries the path
+# table for the same claim but is not required to repeat the phrase.
+_doc_scope=$(doc_count 'MediaTek only|MediaTek-only' "$ROOT/README.md")
+_docs_scope=$(doc_count 'MediaTek only|MediaTek-only' "$ROOT/docs/CLI.md")
 _cli_refuse=$(grep -c '\[ -f "\$NV" \] || die' "$ROOT/cli/macchanger.sh" 2>/dev/null)
 _nv_assigns=$(grep -hE '^NV[A-Z_]*=' "$ROOT/cli/macchanger.sh" 2>/dev/null | sed 's/[[:space:]]*#.*//; s/^[A-Z_]*=//' | grep -v '^$' | LC_ALL=C sort -u)
 _nv_other=
@@ -463,50 +534,103 @@ for _p in $_nv_assigns; do
         *) _nv_other="$_nv_other $_p" ;;
     esac
 done
-if [ "$_doc_scope" -gt 0 ] && [ "$_cli_refuse" -gt 0 ] && [ -z "$_nv_other" ]; then
-    report "the CLI's documented scope matches its code: MediaTek paths only, missing path refused (L1)" PROOF pass "README says 'MediaTek only' $_doc_scope time(s); cli/macchanger.sh refuses a missing \$NV in $_cli_refuse place(s); every writable NV path it names is an MTK calibration path"
-elif [ "$_doc_scope" -eq 0 ]; then
-    report "the CLI's documented scope matches its code: MediaTek paths only, missing path refused (L1)" PROOF fail "the README never says the CLI is MediaTek only, but the CLI only knows MTK paths"
+if [ "$_doc_scope" -eq 0 ]; then
+    report "the CLI's documented scope matches its code: MediaTek paths only, missing path refused (L1)" PROOF fail "README.md no longer says the CLI is MediaTek only, while the CLI knows MTK paths only (this branch greps the front page alone; docs/CLI.md is checked separately below, and a claim that moved must be re-pointed, not dropped)"
+elif [ ! -f "$ROOT/docs/CLI.md" ]; then
+    report "the CLI's documented scope matches its code: MediaTek paths only, missing path refused (L1)" PROOF fail "docs/CLI.md is missing, and that file is where the CLI's own documentation states its MediaTek-only scope in full: a file that should carry the claim and is not there counts as the claim being absent, not as a skip"
+elif [ "$_docs_scope" -eq 0 ]; then
+    report "the CLI's documented scope matches its code: MediaTek paths only, missing path refused (L1)" PROOF fail "docs/CLI.md no longer says the CLI is MediaTek only, while cli/macchanger.sh still knows MTK paths only (the README line alone is a pointer now, not the statement)"
 elif [ "$_cli_refuse" -eq 0 ]; then
     report "the CLI's documented scope matches its code: MediaTek paths only, missing path refused (L1)" PROOF fail "cli/macchanger.sh no longer refuses a missing \$NV, so the documented refusal is not in the code"
-else
+elif [ -n "$_nv_other" ]; then
     report "the CLI's documented scope matches its code: MediaTek paths only, missing path refused (L1)" PROOF fail "the CLI also names non-MTK paths as writable:$_nv_other"
+else
+    report "the CLI's documented scope matches its code: MediaTek paths only, missing path refused (L1)" PROOF pass "README.md says 'MediaTek only' $_doc_scope time(s) and docs/CLI.md $_docs_scope time(s); cli/macchanger.sh refuses a missing \$NV in $_cli_refuse place(s); every writable NV path it names is an MTK calibration path"
 fi
 
 # --- 8c. documented sidecar names are the ones the CLI writes ---------------
+# This is the check the restructure actually broke.  README.md's front page names
+# WIFI.factory.path and WIFI.factory.sha256, and WIFI.factory.offset moved into
+# docs/CLI.md ("where the MAC field sits in the image") and docs/SAFETY.md (the
+# record table).  Reading README.md alone therefore stopped verifying 'offset'
+# without saying so: three documented-and-written names silently became two, and
+# the check still printed PASS.  It reads the whole documentation set now, so a
+# name documented anywhere in the docs is verified, and it FAILs when nothing
+# documents them at all instead of going quiet on an INFO line - the sidecar
+# names are what a user has to copy off the phone before a wipe.
+#
+# All THREE names are required, not merely verified when present.  The loop used
+# to `continue` on a name no document mentions, so deleting WIFI.factory.offset
+# from every document (or offset and sha256 together, leaving only path) still
+# exited 0: the check asserted "every documented name is one the CLI writes" while
+# its name and its PASS line claimed the three-name set.  A name the CLI writes
+# and no document states is now a FAIL that names it, which is the assertion the
+# restructure claimed to have restored.
 _side_bad=
 _side_ok=
+_side_missing=
+_side_written=
 for _s in offset sha256 path; do
-    if grep -q "WIFI\.factory\.$_s" "$ROOT/README.md" 2>/dev/null; then
-        if grep -q "\$BAK\.$_s" "$ROOT/cli/macchanger.sh" 2>/dev/null; then
-            _side_ok="$_side_ok WIFI.factory.$_s"
-        else
-            _side_bad="$_side_bad WIFI.factory.$_s"
-        fi
+    _s_homes=$(doc_homes "WIFI\.factory\.$_s")
+    if grep -q "\$BAK\.$_s" "$ROOT/cli/macchanger.sh" 2>/dev/null; then
+        _side_written="$_side_written WIFI.factory.$_s"
+    fi
+    if [ -z "$_s_homes" ]; then
+        _side_missing="$_side_missing WIFI.factory.$_s"
+        continue
+    fi
+    if grep -q "\$BAK\.$_s" "$ROOT/cli/macchanger.sh" 2>/dev/null; then
+        _side_ok="$_side_ok WIFI.factory.$_s [$(printf '%s' "$_s_homes" | sed 's/ $//')]"
+    else
+        _side_bad="$_side_bad WIFI.factory.$_s [$(printf '%s' "$_s_homes" | sed 's/ $//')]"
     fi
 done
 if [ -n "$_side_bad" ]; then
     report "the sidecar files the README documents are the ones the CLI writes (L1)" PROOF fail "documented but never written by cli/macchanger.sh:$_side_bad"
+elif [ -n "$_side_missing" ]; then
+    report "the sidecar files the README documents are the ones the CLI writes (L1)" PROOF fail "cli/macchanger.sh writes$_side_written beside every captured image, but no file in the documentation set names:$_side_missing (read from README.md and every docs/*.md). All three names are required: the image and its sidecars are copied off the phone as a set, so a name no document states is a file the user does not know to keep"
 elif [ -n "$_side_ok" ]; then
-    report "the sidecar files the README documents are the ones the CLI writes (L1)" PROOF pass "each documented name has a matching \$BAK suffix in the CLI:$_side_ok"
+    report "the sidecar files the README documents are the ones the CLI writes (L1)" PROOF pass "all three names the CLI writes ($_side_written ) are documented and each has a matching \$BAK suffix in the CLI:$_side_ok (read from README.md and every docs/*.md, so a name that moved into docs/ is still verified)"
+# The two branches below are the pre-8c-fix ones.  They are unreachable now, because
+# a documentation set that names none of the three names leaves _side_missing full
+# and FAILs above; they are kept as a fallback for an edit that changes the loop's
+# shape, and they are FAILs, never INFO.
+elif [ -z "$DOC_SET_DOCS" ]; then
+    report "the sidecar files the README documents are the ones the CLI writes (L1)" PROOF fail "no documentation file names any WIFI.factory.* sidecar and there is no docs/ directory: the CLI writes \$BAK.offset, \$BAK.path and \$BAK.sha256 beside every captured image, and neither the front page nor the docs say which files those are. A missing file counts as the claim being absent, not as a skip"
 else
-    report "the sidecar files the README documents are the ones the CLI writes (L1)" PROOF info "the README no longer names any WIFI.factory.* sidecar"
+    report "the sidecar files the README documents are the ones the CLI writes (L1)" PROOF fail "no file in the documentation set (README.md, $(printf '%s' "$DOC_SET_DOCS" | sed "s|$ROOT/||g; s|^ ||")) names any WIFI.factory.* sidecar, while cli/macchanger.sh writes three of them (\$BAK.offset, \$BAK.path, \$BAK.sha256)"
 fi
 
 # --- 8d. the documented targetSdk is the manifest's ------------------------
+# Both halves are still checked, and both are read from the whole documentation
+# set: README.md keeps its one-line mention (and the pointer), docs/APP.md is
+# where "why targetSdkVersion 30 is deliberate" moved, and docs/DEVICES.md states
+# it again in the vendor table.  Every value stated anywhere in the docs must be
+# the manifest's value, so a doc that drifts to another number FAILs instead of
+# going unread.
 _m_sdk=$(sed -n 's/.*android:targetSdkVersion="\([0-9][0-9]*\)".*/\1/p' "$_manifest" 2>/dev/null | head -n 1)
-_r_sdks=$(grep -o 'targetSdkVersion [0-9][0-9]*' "$ROOT/README.md" 2>/dev/null | awk '{ print $2 }' | LC_ALL=C sort -u | tr '\n' ' ')
+_rm_sdks=$(grep -oE 'targetSdkVersion [0-9][0-9]*' "$ROOT/README.md" 2>/dev/null | awk '{ print $2 }' | LC_ALL=C sort -u | tr '\n' ' ')
+_doc_sdks=$(grep -hoE 'targetSdkVersion [0-9][0-9]*' $DOC_SET 2>/dev/null | awk '{ print $2 }' | LC_ALL=C sort -u | tr '\n' ' ')
 if [ -z "$_m_sdk" ]; then
     report "the targetSdk the README states is the one the manifest sets (M5)" PROOF fail "app/AndroidManifest.xml has no android:targetSdkVersion"
-elif [ "$_r_sdks" = "$_m_sdk " ]; then
-    report "the targetSdk the README states is the one the manifest sets (M5)" PROOF pass "manifest $_m_sdk; every targetSdkVersion the README states is $_m_sdk"
+elif [ -z "$_rm_sdks" ]; then
+    report "the targetSdk the README states is the one the manifest sets (M5)" PROOF fail "the README no longer states any targetSdkVersion (the manifest sets $_m_sdk), and this check reads README.md and every docs/*.md, so the statement is gone from all of them - re-point the check if the claim moved, do not drop the half that greps the README"
+elif [ ! -f "$ROOT/docs/APP.md" ]; then
+    report "the targetSdk the README states is the one the manifest sets (M5)" PROOF fail "docs/APP.md is missing: it is where the reason targetSdkVersion $_m_sdk is deliberate now lives, and where README.md sends the reader. A file that should carry the claim and is not there counts as the claim being absent, not as a skip"
+elif [ "$_doc_sdks" = "$_m_sdk " ]; then
+    report "the targetSdk the README states is the one the manifest sets (M5)" PROOF pass "manifest $_m_sdk; every targetSdkVersion stated in $(doc_homes 'targetSdkVersion [0-9]')is $_m_sdk"
 else
-    report "the targetSdk the README states is the one the manifest sets (M5)" PROOF fail "manifest $_m_sdk, README states '$_r_sdks'"
+    report "the targetSdk the README states is the one the manifest sets (M5)" PROOF fail "manifest $_m_sdk, the documentation states '$_doc_sdks' in $(doc_homes 'targetSdkVersion [0-9]')"
 fi
 
 # --- 8d2. every tool under tools/ is named in the README --------------------
 # A tool nobody can find is a tool nobody runs.  Files and directories directly
-# under tools/ (other than README.md) are the entry points.
+# under tools/ (other than README.md) are the entry points.  This check stays
+# scoped to README.md on purpose, alone among the doc-versus-code checks: the
+# front page is the one a beginner reads, README.md links every gate from its
+# "Where to read more" table, and a tool that is only named in docs/DEVELOPING.md
+# is a tool the reader who never opens docs/ never finds.  If a restructure moves
+# that table, this check should go red - not be widened to the docs set.
 _missing_tools=
 _listed_tools=
 for _t in "$ROOT"/tools/*; do
@@ -528,23 +652,49 @@ else
 fi
 
 # --- 8e. the zero-permission claim in the docs matches the manifest ---------
-_r_permclaim=$(grep -c 'zero <uses-permission>' "$ROOT/README.md" 2>/dev/null)
+# README.md still carries the claim; docs/DEVELOPING.md repeats it in the
+# repository layout, and no doc may contradict it.  The old "the README does not
+# make the claim any more" branch was an INFO, which asserts nothing and still
+# exits 0, so a claim that drifted out of the front page went quiet: it is a FAIL
+# now, and a missing docs/ directory is a FAIL too, on the same rule as 8c.
+_r_permclaim=$(doc_count 'zero <uses-permission>' "$ROOT/README.md")
 _m_perm=$(grep -c '<uses-permission' "$_manifest" 2>/dev/null | tr -d ' ')
-if [ "$_r_permclaim" -gt 0 ] && [ "$_m_perm" = 0 ]; then
-    report "the README's zero-permission claim matches the manifest (design)" PROOF pass "README claims 'zero <uses-permission> elements' and app/AndroidManifest.xml has $_m_perm"
-elif [ "$_r_permclaim" -gt 0 ]; then
-    report "the README's zero-permission claim matches the manifest (design)" PROOF fail "the README claims zero <uses-permission> elements but the manifest has $_m_perm"
+_doc_permfiles=$(doc_homes '<uses-permission')
+_doc_perm_bad=
+for _pf in $_doc_permfiles; do
+    grep -q 'zero <uses-permission>' "$ROOT/$_pf" 2>/dev/null || _doc_perm_bad="$_doc_perm_bad $_pf"
+done
+if [ "$_r_permclaim" -eq 0 ]; then
+    report "the README's zero-permission claim matches the manifest (design)" PROOF fail "the README does not make the zero-permission claim any more (no 'zero <uses-permission>' in README.md). The claim is a design constraint of this project and the manifest still has $_m_perm <uses-permission> element(s), so the front page has to state it"
+elif [ -z "$DOC_SET_DOCS" ]; then
+    report "the README's zero-permission claim matches the manifest (design)" PROOF fail "there is no docs/ directory: the README links its depth there, and a documentation file that should carry a claim and is not there counts as the claim being absent, not as a skip"
+elif [ "$_m_perm" != 0 ]; then
+    report "the README's zero-permission claim matches the manifest (design)" PROOF fail "the documentation claims zero <uses-permission> elements but app/AndroidManifest.xml has $_m_perm"
+elif [ -n "$_doc_perm_bad" ]; then
+    report "the README's zero-permission claim matches the manifest (design)" PROOF fail "these documentation files mention <uses-permission but do not state that the count is zero:$_doc_perm_bad"
 else
-    report "the README's zero-permission claim matches the manifest (design)" PROOF info "the README does not make the zero-permission claim any more"
+    report "the README's zero-permission claim matches the manifest (design)" PROOF pass "README.md claims 'zero <uses-permission> elements', each documentation file that mentions <uses-permission also states that the count is zero ($_doc_permfiles), and app/AndroidManifest.xml has $_m_perm. What this branch does NOT prove: that no file also *contradicts* the claim elsewhere - it tests for the presence of the zero-count sentence in every file that mentions the element, not the absence of a contrary sentence, so 'agrees' would be a stronger word than this check earns"
 fi
 
 # --- 8f. the documented prebuilt APK hash matches the shipped APK ----------
+# README.md and CHANGELOG.md are still required to carry the real digest
+# (unchanged).  What is new is the docs half of the restructure: every file that
+# tells the reader to run 'sha256sum prebuilt/MacChanger.apk' must print the value
+# they should see, so the copy in docs/APP.md cannot drift away from the APK and
+# leave a reader rejecting a good file or accepting a bad one.
 if [ -f "$_apk" ]; then
     _real_sha=$(sha256sum <"$_apk" | awk '{ print $1 }')
-    if grep -q "$_real_sha" "$ROOT/CHANGELOG.md" 2>/dev/null && grep -q "$_real_sha" "$ROOT/README.md" 2>/dev/null; then
-        report "the prebuilt APK's SHA-256 is the one the docs record (M8, C5)" PROOF pass "$_real_sha appears in both README.md and CHANGELOG.md; a user can verify what they received"
+    _sha_teach=$(doc_homes 'sha256sum prebuilt/MacChanger\.apk')
+    _sha_missing=
+    grep -q "$_real_sha" "$ROOT/README.md" 2>/dev/null || _sha_missing="$_sha_missing README.md"
+    grep -q "$_real_sha" "$ROOT/CHANGELOG.md" 2>/dev/null || _sha_missing="$_sha_missing CHANGELOG.md"
+    for _sha_f in $_sha_teach; do
+        grep -q "$_real_sha" "$ROOT/$_sha_f" 2>/dev/null || _sha_missing="$_sha_missing $_sha_f"
+    done
+    if [ -z "$_sha_missing" ]; then
+        report "the prebuilt APK's SHA-256 is the one the docs record (M8, C5)" PROOF pass "$_real_sha appears in README.md, in CHANGELOG.md, and in every file that tells the reader to hash the APK ($(printf '%s' "$_sha_teach" | sed 's/ $//')); a user can verify what they received"
     else
-        report "the prebuilt APK's SHA-256 is the one the docs record (M8, C5)" PROOF fail "prebuilt/MacChanger.apk hashes to $_real_sha; README=$(grep -c "$_real_sha" "$ROOT/README.md" 2>/dev/null) CHANGELOG=$(grep -c "$_real_sha" "$ROOT/CHANGELOG.md" 2>/dev/null) match(es)"
+        report "the prebuilt APK's SHA-256 is the one the docs record (M8, C5)" PROOF fail "prebuilt/MacChanger.apk hashes to $_real_sha; it is missing or different in:$_sha_missing (README.md and CHANGELOG.md are the record; a file that tells the reader to run sha256sum must carry the same value)"
     fi
 else
     report "the prebuilt APK's SHA-256 is the one the docs record (M8, C5)" PROOF info "skipped: no prebuilt/MacChanger.apk"
@@ -552,17 +702,34 @@ fi
 
 # --- 8g. the two claims that only a human can judge, checked for presence ---
 # HEURISTIC: this proves the sentence is still there, not that it is true.
+# README.md must still carry both sentences - they are the two a reader meets
+# before doing something irreversible - and docs/HOW-IT-WORKS.md, which the
+# README points at for the long version, must carry them too.  A missing
+# docs/HOW-IT-WORKS.md is a FAIL: it is where the full statement now lives.
 if [ -f "$ROOT/README.md" ]; then
-    if grep -q 'non-persistent' "$ROOT/README.md" && grep -q 'does not survive a reboot' "$ROOT/README.md" \
-       && grep -q 'ip link' "$ROOT/README.md"; then
-        report "the README still labels the ip-link fallback non-persistent (H8)" HEURISTIC pass "'ip link' + 'non-persistent' + 'does not survive a reboot' are all still present in README.md. What is NOT checked here: whether the code ever lets that fallback produce a success verdict - only that the sentence survives"
+    _how=$(docs_file HOW-IT-WORKS.md)
+    _rm_ip=$(doc_count 'ip link' "$ROOT/README.md")
+    _rm_np=$(doc_count 'non-persistent' "$ROOT/README.md")
+    _rm_nr=$(doc_count 'does not survive a reboot' "$ROOT/README.md")
+    if [ "$_rm_ip" -eq 0 ] || [ "$_rm_np" -eq 0 ] || [ "$_rm_nr" -eq 0 ]; then
+        report "the README still labels the ip-link fallback non-persistent (H8)" HEURISTIC fail "one of 'ip link', 'non-persistent', 'does not survive a reboot' is gone from README.md; this branch greps the front page alone (docs/HOW-IT-WORKS.md is checked separately below), so re-point it if the claim moved, do not drop it"
+    elif [ -z "$_how" ]; then
+        report "the README still labels the ip-link fallback non-persistent (H8)" HEURISTIC fail "docs/HOW-IT-WORKS.md is missing: that is the file README.md sends the reader to for the full statement of this fallback, and a file that should carry it and is not there counts as the claim being absent, not as a skip"
+    elif [ "$(doc_count 'ip link' "$_how")" -eq 0 ] || [ "$(doc_count 'non-persistent' "$_how")" -eq 0 ] || [ "$(doc_count 'does not survive a reboot' "$_how")" -eq 0 ]; then
+        report "the README still labels the ip-link fallback non-persistent (H8)" HEURISTIC fail "docs/HOW-IT-WORKS.md no longer carries one of 'ip link', 'non-persistent', 'does not survive a reboot'"
     else
-        report "the README still labels the ip-link fallback non-persistent (H8)" HEURISTIC fail "one of 'ip link', 'non-persistent', 'does not survive a reboot' is gone from README.md"
+        report "the README still labels the ip-link fallback non-persistent (H8)" HEURISTIC pass "'ip link' + 'non-persistent' + 'does not survive a reboot' are all still present in README.md and in docs/HOW-IT-WORKS.md. What is NOT checked here: whether the code ever lets that fallback produce a success verdict - only that the sentence survives"
     fi
-    if grep -q 'Android 12' "$ROOT/README.md" && grep -qi 'randomiz' "$ROOT/README.md"; then
-        report "the README still states the Android 12+ randomization-detection limit (H5)" HEURISTIC pass "the randomization section still names Android 12"
+    _rm_a12=$(doc_count 'Android 12' "$ROOT/README.md")
+    _rm_rnd=$(doc_count 'randomiz' "$ROOT/README.md")
+    if [ "$_rm_a12" -eq 0 ] || [ "$_rm_rnd" -eq 0 ]; then
+        report "the README still states the Android 12+ randomization-detection limit (H5)" HEURISTIC fail "README.md no longer names Android 12 in its randomization discussion; this branch greps the front page alone (docs/HOW-IT-WORKS.md is checked separately below)"
+    elif [ -z "$_how" ]; then
+        report "the README still states the Android 12+ randomization-detection limit (H5)" HEURISTIC fail "docs/HOW-IT-WORKS.md is missing, and it is where the Android 12+ limitation is now written out in full"
+    elif [ "$(doc_count 'Android 12' "$_how")" -eq 0 ] || [ "$(doc_count 'randomiz' "$_how")" -eq 0 ]; then
+        report "the README still states the Android 12+ randomization-detection limit (H5)" HEURISTIC fail "docs/HOW-IT-WORKS.md no longer names Android 12 in its randomization discussion"
     else
-        report "the README still states the Android 12+ randomization-detection limit (H5)" HEURISTIC fail "the README no longer names Android 12 in its randomization discussion"
+        report "the README still states the Android 12+ randomization-detection limit (H5)" HEURISTIC pass "the randomization section still names Android 12 in README.md and in docs/HOW-IT-WORKS.md"
     fi
 else
     report "the README still labels the ip-link fallback non-persistent (H8)" HEURISTIC fail "README.md is missing"

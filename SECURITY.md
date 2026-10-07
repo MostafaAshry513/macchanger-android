@@ -72,18 +72,20 @@ maintainer at most.
 
 * Using this tool against a device you do not own, or a network you are not
   authorized to use. That is misuse, not a vulnerability; see "Intended use and
-  authorization" in README.md.
+  licence" in README.md, and [docs/SAFETY.md](docs/SAFETY.md) for what the tool
+  does to a phone and what a wipe does not undo.
 * Feature requests that break the build model: Gradle, AndroidX, a `res/`
   directory, XML layouts, third-party libraries, a foreground service, new
   permissions. All of these are deliberate exclusions; the code-built UI and the
   zero-permission manifest are the design.
 * `targetSdkVersion 30` and `allowBackup="false"`. Both are deliberate and
-  explained in README.md; reports asking to raise or flip them will be answered
-  with that explanation.
+  explained in [docs/APP.md](docs/APP.md); reports asking to raise or flip them
+  will be answered with that explanation.
 * "My router still sees the old MAC / my network still randomizes." That is
   Android's per-network MAC randomization overriding the NVRAM value, and it is
-  documented in README.md. It is not a defect in this tool — but *reporting a
-  failure to detect it* is (see "Randomization detection" in README.md).
+  documented in [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md). It is not a defect in
+  this tool — but *reporting a failure to detect it* is (see "Randomization
+  detection" there).
 * The absence of a `/data/adb` directory on a device that has no Magisk-style
   root: the app then falls back to its private mirror, and says so.
 
@@ -261,7 +263,8 @@ the literal `[ "$VAR" = 1 ]`, the target must be validated against an explicit
 allow-list, and the documentation must state the gate the code actually has.
 
 One override does remain, deliberately: `BB` selects the busybox binary
-(`BB=${BB:-/data/adb/magisk/busybox}`), and the README documents it. It chooses a
+(`BB=${BB:-/data/adb/magisk/busybox}`), and [docs/CLI.md](docs/CLI.md) documents
+it. It chooses a
 *tool*, not a target path, and the CLI probes it before use — but it is still
 caller-controlled input to a root process, so it belongs to the same trust
 boundary as root itself.

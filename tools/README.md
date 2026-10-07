@@ -50,7 +50,11 @@ sh tools/package.sh --check PATH [--check PATH ...]     # hand-off gate
   reported instead of unpacked;
 * any file a complete deliverable must have (`README.md`, `app/build.sh`,
   `app/AndroidManifest.xml`, `app/src/com/macchanger/MainActivity.java`,
-  `cli/macchanger.sh`, `prebuilt/MacChanger.apk`, `tools/package.sh`).
+  `cli/macchanger.sh`, `prebuilt/MacChanger.apk`, `tools/package.sh`, and the six
+  documents the README links as the depth behind its warnings — `docs/SAFETY.md`,
+  `docs/CLI.md`, `docs/APP.md`, `docs/DEVICES.md`, `docs/HOW-IT-WORKS.md`,
+  `docs/DEVELOPING.md`; an artifact without them has dead links and the caveats
+  cut off).
 
 It prints one `HANDOFF: PASS|WARN|FAIL <path> - <why>` block per artifact and exits 0
 when every artifact passed. Run it on whatever you are about to send, whatever built it:

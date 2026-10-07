@@ -84,7 +84,7 @@ same reason, and are labelled as such rather than as proofs about the write path
 | 7b | the shipped APK's own manifest carries no permission string | PROOF | design |
 | 8a | no line-position parsing of the WiFi status in `app/` or `cli/` | PROOF | H5 |
 | 8b | the CLI's MediaTek-only scope matches its code | PROOF | L1 |
-| 8c | the sidecar files the README documents are the ones the CLI writes | PROOF | L1 |
+| 8c | all three sidecar names the CLI writes are documented, and each is one it writes | PROOF | L1 |
 | 8d | the `targetSdk` the README states is the one the manifest sets | PROOF | M5 |
 | 8d2 | every tool under `tools/` is named in the README | PROOF | discoverability |
 | 8e | the README's zero-permission claim matches the manifest | PROOF | design |
@@ -96,6 +96,45 @@ same reason, and are labelled as such rather than as proofs about the write path
 
 What each heuristic cannot see is stated on its own output line; the "docs versus code"
 checks prove that the two files agree, not that the words are wise.
+
+### Where the doc-versus-code checks read (8b–8h)
+
+`README.md` was restructured: the front page states each fact in a line or two and the
+depth lives in `docs/*.md`. A check that still read one hard-coded path stops verifying a
+claim the moment that claim moves — and one of them did. `WIFI.factory.offset` left the
+README for `docs/CLI.md` and `docs/SAFETY.md`, and 8c, which loops over the three sidecar
+names and tests only the ones the file it reads names, silently went from verifying three
+documented-and-written names to two while still printing `PASS`. Simplification by
+omission is the failure mode this gate exists to catch, so it was re-pointed rather than
+left green.
+
+Checks 8b, 8c, 8d, 8e, 8f and 8g now read a **file list** — `README.md` plus every
+`docs/*.md` — instead of a path, and each names the `docs/` file that now owns its claim:
+
+| check | the file that now owns the claim | what is asserted |
+| --- | --- | --- |
+| 8b | `docs/CLI.md` | the CLI's MediaTek-only scope, in `README.md` **and** in the CLI's own document, against the code's refusal of a missing `$NV` and its MTK-only writable-path list |
+| 8c | `docs/CLI.md`, `docs/SAFETY.md` | **all three** of `WIFI.factory.offset`, `WIFI.factory.path` and `WIFI.factory.sha256` are named somewhere in the set, and each is one the CLI actually writes (`$BAK.offset`, `$BAK.path`, `$BAK.sha256`). A name that no document states is a `FAIL` that names it, not a `continue` |
+| 8d | `docs/APP.md`, `docs/DEVICES.md` | every `targetSdkVersion` stated anywhere in the set is the manifest's |
+| 8e | `docs/DEVELOPING.md` | the `zero <uses-permission>` claim is still on the front page, every file that mentions `<uses-permission` also states the count is zero, and the manifest has none. **Presence, not consistency:** a file carrying that sentence *and* a contradictory one elsewhere would still pass, and the evidence line says so |
+| 8f | `docs/APP.md` | the real APK digest is in `README.md`, in `CHANGELOG.md`, and in every file that tells the reader to run `sha256sum prebuilt/MacChanger.apk` |
+| 8g, 8h | `docs/HOW-IT-WORKS.md` | the non-persistent `ip link` sentence and the Android 12+ limitation are still in `README.md` **and** still written out in the file the README points at for the long version |
+
+Two branches that used to print `INFO` print `FAIL` now, because an `INFO` line asserts
+nothing and still exits 0 — a claim that drifted out of the README went quiet instead of
+red: 8c's "no sidecar named anywhere" and 8e's "the README does not make the
+zero-permission claim any more". **A missing file counts as the claim being absent**: the
+pre-fix revision has no `docs/` directory at all and a different README, and every one of
+these checks still `FAIL`s there. That is the negative control, run as
+
+```
+git worktree add /tmp/ctrlfail a82ffee && sh tools/checks/checks.sh /tmp/ctrlfail
+```
+
+Check **8d2** is the exception, and stays scoped to `README.md` alone: the front page is
+the one a beginner reads, it links every gate from its "Where to read more" table, and a
+tool named only in `docs/DEVELOPING.md` is one that reader never finds. If a restructure
+moves that table, 8d2 should go red, not be widened.
 
 Check 2b is why check 1 is not enough. Check 1 passed on a tree whose signing key had been
 removed while a byte-identical copy of the same key sat one directory up, in
@@ -207,6 +246,14 @@ it; its last two lines were, verbatim:
 checks: 21 passed, 2 informational, 0 failed (23 result line(s))
 CHECKS: PASS (21 passed, 2 informational, 0 failed)
 ```
+
+That tuple was re-measured after the README was restructured and the doc-versus-code
+checks were re-pointed at `README.md` plus every `docs/*.md`. **The totals are unchanged,
+and that is the point**: no check was dropped and no assertion was relaxed, so the same 23
+result lines appear — only the files each one reads moved. The negative control is what
+proves it: the pre-fix revision (`a82ffee`, no `docs/` at all) fails the same 11 checks it
+failed before, plus the two whose absent-claim branch was an `INFO` and is now a `FAIL` —
+`11 failed` became `13 failed` and every pre-existing `FAIL` still fails.
 
 The two INFO lines are stated findings, not passes:
 

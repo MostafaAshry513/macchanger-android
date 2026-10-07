@@ -20,9 +20,11 @@
 # line against the extracted tree.
 #
 # What goes in
-#   README.md, LICENSE, SECURITY.md, CHANGELOG.md, .gitignore, app/ (source,
-#   manifest, build.sh), cli/macchanger.sh, prebuilt/MacChanger.apk, tools/
-#   (the offline verification harnesses).
+#   README.md, LICENSE, SECURITY.md, CHANGELOG.md, .gitignore, docs/ (the
+#   long-form documentation the README links to: SAFETY, CLI, APP, DEVICES,
+#   HOW-IT-WORKS, DEVELOPING), app/ (source, manifest, build.sh),
+#   cli/macchanger.sh, prebuilt/MacChanger.apk, tools/ (the offline verification
+#   harnesses).
 #
 # What stays out, and why
 #   .git/                       not a release artifact
@@ -504,10 +506,18 @@ check_one() {
     fi
 
     # --- required files: an artifact that is missing them is not a deliverable
+    # docs/*.md are required for the same reason README.md is: the front page
+    # links every one of them as the depth behind a warning, so an artifact
+    # without them is a deliverable with dead links and the caveats cut off.  The
+    # list is the six files README.md points at, not "all of docs/": a new docs
+    # file is documentation the archive carries, but only these six are promised
+    # by the front page.
     _c_missing=
     for _c_req in README.md app/build.sh app/AndroidManifest.xml \
                   app/src/com/macchanger/MainActivity.java cli/macchanger.sh \
-                  prebuilt/MacChanger.apk tools/package.sh; do
+                  prebuilt/MacChanger.apk tools/package.sh \
+                  docs/SAFETY.md docs/CLI.md docs/APP.md docs/DEVICES.md \
+                  docs/HOW-IT-WORKS.md docs/DEVELOPING.md; do
         if [ -d "$_c_path" ]; then
             [ -f "$_c_path/$_c_req" ] || _c_missing="$_c_missing $_c_req"
         elif [ -n "$_c_members_rel" ]; then

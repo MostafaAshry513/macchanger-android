@@ -1,5 +1,9 @@
 # VERIFICATION.md — independent final sign-off
 
+> **Historical note.** `README.md` was restructured into a short guide plus
+> `docs/*.md` after this verification, so every line-number reference to `README.md`
+> below is historical; match on section names.
+
 Verifier: final sign-off stage (seventh agent; authored none of the code verified here).
 Date of run: 2026-10-07 13:30–13:50 UTC.
 Role: re-run every objective gate, re-decide every critical/high blocker against the **current**

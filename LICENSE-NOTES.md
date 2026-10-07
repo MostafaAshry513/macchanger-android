@@ -11,11 +11,12 @@ here instead.
 * **The disclaimer is not boilerplate here.** This software runs as root and
   rewrites a Wi-Fi calibration file on your device. It is provided with no
   warranty of any kind, and you accept that risk by using it. Read
-  [README.md](README.md) — in particular *Safety, backups and recovery* — before
+  [README.md](README.md), and in particular
+  [docs/SAFETY.md](docs/SAFETY.md) (*Safety, backups and recovery*), before
   installing it.
 * **The licence covers the source in this repository only.** It grants no right
   to use this software against a device you do not own or a network you are not
-  authorized to use; see *Intended use and authorization* in
+  authorized to use; see *Intended use and licence* in
   [README.md](README.md).
 * **Copyright holder.** Recorded as "MacChanger contributors". This distribution
   is maintained at <https://github.com/MostafaAshry513/macchanger-android>; if you
