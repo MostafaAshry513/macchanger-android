@@ -89,10 +89,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
-
+      # No third-party SDK action: android-actions/setup-android@v3 crashes on current
+      # runner images because it tries to install the retired 'tools' package
+      # ("Warning: Failed to find package 'tools'" then exit 1) - the first CI run
+      # proved that. The image already ships cmdline-tools, so call sdkmanager
+      # directly. CI is the only place this step can be exercised, which is exactly
+      # why it is written to be boring.
       - name: install the SDK pieces this build uses
-        run: sdkmanager --install "build-tools;$BUILD_TOOLS" "platforms;android-$API"
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          [ -d "$SDK" ] || { echo "::error::no Android SDK at $SDK"; exit 1; }
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SDKMGR="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMGR" ]; then
+            SDKMGR=$(find "$SDK/cmdline-tools" -maxdepth 2 -name sdkmanager -type f 2>/dev/null | sort | tail -n 1)
+          fi
+          [ -x "$SDKMGR" ] || { echo "::error::sdkmanager not found under $SDK/cmdline-tools"; exit 1; }
+          echo "using $SDKMGR"
+          yes 2>/dev/null | "$SDKMGR" --sdk_root="$SDK" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" --sdk_root="$SDK" --install "build-tools;$BUILD_TOOLS" "platforms;android-$API"
+          ls -d "$SDK/build-tools/$BUILD_TOOLS" "$SDK/platforms/android-$API"
 
       # ------------------------------------------------------------------ signing
       # No password literal appears anywhere in this file: the throwaway password is
