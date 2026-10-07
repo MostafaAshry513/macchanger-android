@@ -50,8 +50,9 @@ goes through the root (`su`) channel you granted it. Deliberate, and not to be t
 the WiFi adapter of the phone it runs on.
 * On **Android 12 and newer** the app can misread whether a network is randomizing its MAC — do not trust that one verdict
 there. For the address the driver really uses, read `show` (app or CLI), or run `su -c 'cat /sys/class/net/wlan0/address'`,
-which prints just the address, like `02:11:22:33:44:55`. Android Settings always shows the per-network randomized address,
-a different number.
+which prints just the address, like `02:11:22:33:44:55`. Android Settings shows the address that network uses: the randomized
+one when its Privacy is set to randomize, the device address when it is set to *Use device MAC*. Compare the two rather than
+assuming they differ.
 * The one outcome nothing here can undo is a calibration file truncated or zeroed: no message, retry or reboot repairs that,
 and everything here exists to avoid it.
 
@@ -84,8 +85,8 @@ cd MacChanger && pwd   # note this path: step 2 needs it
 ```
 
 **2 · In the root shell.** `su` asks for root, and it can start in `/`, where the relative paths below would fail — so `cd`
-back to the path `pwd` printed. `su` is a shell on this phone, not a network connection, so the WiFi restart in the last
-command does not close it.
+back to the path `pwd` printed. `su` is a shell on this phone, not a network connection, so the WiFi restart inside `set`
+does not close it.
 
 ```bash
 su
@@ -94,8 +95,8 @@ sh cli/macchanger.sh doctor                             # read-only report: run 
 sh cli/macchanger.sh backup                             # save the factory image. Do not skip.
 sh cli/macchanger.sh set 02:11:22:33:44:55 --dry-run    # prints what would change, writes nothing
 sh cli/macchanger.sh set 02:11:22:33:44:55              # writes in place; WiFi restarts, you drop off briefly
+echo $?                                                 # right after the write: 0 = it wrote and verified
 sh cli/macchanger.sh show                               # what the file holds / the driver uses
-echo $?                                                 # 0 = success. Run it right after a command.
 exit
 ```
 
@@ -162,8 +163,10 @@ runtime        : 02:11:22:33:44:55
 A refusal prints no `[+]` lines and changes nothing — look for `error:`, `blocker :` or a non-zero exit. If `supported` says
 the path "is missing (another vendor, or a different layout)", this CLI is not for your phone: use the app, and read
 [docs/DEVICES.md](docs/DEVICES.md).
-* Exit `0` is success; anything else is a refusal or a failure, and `echo $?` must be run immediately after the command,
-before typing anything else. Every code and option is in [docs/CLI.md](docs/CLI.md). **To put the factory MAC back:**
+* Exit `0` is success **for `set`, `restore` and `panic`**; anything else is a refusal or a failure, and `echo $?` must be run
+immediately after the command, before typing anything else. `doctor` is the exception: it always exits `0`, even on a phone it
+cannot write to, so read its `verdict :` and `blocker :` lines instead. Every code and option is in
+[docs/CLI.md](docs/CLI.md). **To put the factory MAC back:**
 
 ```bash
 sh cli/macchanger.sh restore   # writes the saved factory image back, in place
@@ -171,7 +174,7 @@ sh cli/macchanger.sh panic     # the same, for a file that is corrupt, unreadabl
 ```
 
 `restore` refuses without a factory image, so run `backup` first. `panic` does not invent a MAC: it puts the saved image back
-even when the calibration file is damaged — the one case `restore` refuses.
+even when the calibration file is damaged — which `restore` refuses.
 
 ## Choosing a MAC value
 * **Simplest safe choice:** run `sh cli/macchanger.sh random`, which generates one for you. Otherwise copy
@@ -209,8 +212,9 @@ su -c 'pm install /data/data/com.termux/files/home/MacChanger/app/app-signed.apk
 only if you already know the factory MAC (from the router's client list, or from `sh cli/macchanger.sh show` run *before* your
 first change). Type a spoofed value and **Restore factory** will faithfully put the spoof back. Prefer
 `sh cli/macchanger.sh backup`, which copies the real file and needs nothing typed. **Export record** copies the record files
-to `/sdcard/Download`. `SET MAC` card: **Set MAC** applies what you typed, **Random** picks one, **Restore factory** writes
-the saved image back, and the checkbox **Runtime ip-link fallback (not persistent)** — leave it off — sits under it.
+to `/sdcard/Download` (or `/sdcard` when that directory does not exist). `SET MAC` card: **Set MAC** applies what you typed,
+**Random** picks one, **Restore factory** writes the saved image back, and the checkbox **Runtime ip-link fallback (not
+persistent)** — leave it off — sits under it.
 `RECOVERY` card: its `durable` line says whether `/data/adb` holds your backup. Every row and button, and why
 `targetSdkVersion 30` (the Android version it declares) is deliberate: [docs/APP.md](docs/APP.md).
 
@@ -258,8 +262,9 @@ the commands and says what is still possible without a backup. Refusing to write
 For **phones you own** and **networks you are authorized to use**: privacy on your own network and on networks without MAC
 filtering; repairing a corrupted, zeroed or wrongly flashed factory MAC, where the radio comes up with an address the AP or
 driver rejects; replacing a MAC burned into a captive-portal or asset database you control; and testing your own access
-point's allow/deny lists. Changing the MAC to a value that is not yours to evade per-device billing, a block, an allow/deny
-list or a portal limit is misuse, and in many jurisdictions a computer-misuse offence: a MAC is a credential.
+point's allow/deny lists, and hardware diagnostics. Changing the MAC to a value that is not yours to evade per-device billing,
+a block, an allow/deny list or a portal limit is misuse, and in many jurisdictions a computer-misuse offence: a MAC is a
+credential.
 
 MIT licence, no warranty — see `LICENSE` and [LICENSE-NOTES.md](LICENSE-NOTES.md). Security reports and scope:
 [SECURITY.md](SECURITY.md).
