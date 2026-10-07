@@ -180,6 +180,9 @@ jobs:
           RELEASE_CERT_SHA256="${EXPECTED_CERT:-}" \
           OUT="$OUT" bash ./app/build.sh
           echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+          # The artifact name must be a bare filename: upload-artifact rejects a
+          # forward slash, which is what the path above would give it.
+          echo "name=$(basename "$OUT")" >> "$GITHUB_OUTPUT"
 
       # build.sh has 16 gates of its own; these are the headline properties, printed
       # in the log so a reader can see them without downloading the artefact.
@@ -213,7 +216,7 @@ jobs:
       - name: upload the APK
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.build.outputs.apk }}
+          name: ${{ steps.build.outputs.name }}
           path: |
             ${{ steps.build.outputs.apk }}
             ${{ steps.build.outputs.apk }}.sha256
@@ -238,10 +241,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          APK=$(find dist -maxdepth 2 -name 'MacChanger-release.apk' -print -quit)
+          APK=$(find dist -type f -name 'MacChanger-release.apk' -print -quit)
           [ -n "$APK" ] || { echo "::error::no release-signed APK was produced"; exit 1; }
-          SHA=$(find dist -maxdepth 2 -name 'MacChanger-release.apk.sha256' -print -quit)
-          CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$(find dist -maxdepth 2 -name apksigner.txt -print -quit)")
+          SHA=$(find dist -type f -name 'MacChanger-release.apk.sha256' -print -quit)
+          CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$(find dist -type f -name apksigner.txt -print -quit)")
           gh release create "$GITHUB_REF_NAME" \
             --title "MacChanger $GITHUB_REF_NAME" \
             --notes "Built from $GITHUB_SHA by .github/workflows/build.yml.
