@@ -96,6 +96,39 @@ gaps: none of them can prove the app's behaviour on a device, `stubcompile` does
 execute anything, `clitest` drives the WiFi restart through a stub, and `checks` is
 grep-based.
 
+## Continuous integration
+
+`.github/workflows/build.yml` runs the gates and builds the APK on every push, pull
+request and tag:
+
+* **`gates`** — `stubcompile`, its negative controls, `checks`, shell syntax, and
+  `clitest` (with `sudo apt-get install busybox-static`, because the behavioural
+  suite needs root and a private mount namespace). Nothing here needs an Android SDK.
+* **`apk`** — installs `build-tools` and `platforms;android-30`, builds with
+  `app/build.sh` (`AJ`/`FRAMEWORK` pointed at the SDK jar — see docs/APP.md for why
+  a jar is enough, and why the manifest declares no launcher icon), re-verifies the
+  artifact with `aapt` and `apksigner`, and uploads it as an artifact.
+* **`release`** — on a `v*` tag, attaches the signed APK to a GitHub Release.
+
+Signing uses the `KEYSTORE_BASE64` and `KEYSTORE_PASSWORD` secrets, plus an optional
+`RELEASE_CERT_SHA256` variable that makes the build refuse to finish unless the
+result carries the expected certificate. Without the secrets the workflow still runs,
+signs with a throwaway key generated inside the run, names the artifact
+`MacChanger-TEST-ONLY.apk`, and a tag build refuses to publish at all. No password
+literal appears in the workflow: a check in `tools/checks/checks.sh` fails if one
+does, and it caught the first draft of that file.
+
+**The workflow was verified the way the rest of this project is** — by executing it,
+not by reading it. Its exact build commands were run off-device with build-tools 34
+against both `platforms;android-30` and `platforms;android-34` before it was
+committed, which is how two real defects surfaced: the manifest's launcher icon was
+an `@android:drawable/...` reference that `aapt1` cannot resolve without the device's
+own framework, and the version stamping used `--version-code`/`--version-name`, which
+`aapt1` ignores outright (silently: it exits 0 and packages the manifest's frozen
+identity). Both are fixed — `app/AndroidManifest.xml`, `app/build.sh` — and
+`tools/checks/checks.sh` now requires the stamping mechanism that actually works
+rather than the flags that merely look right.
+
 ## Security, licence and changelog
 
 * **Reporting a problem:** `SECURITY.md` — including what is in scope, the state of

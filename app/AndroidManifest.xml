@@ -1,14 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- versionCode/versionName are fallbacks only: app/build.sh stamps both on every
-     build (aapt version-code/version-name options) and refuses to finish if the
-     stamp did not take, so two builds of different sources are distinguishable. -->
+<!-- versionCode/versionName here are fallbacks: app/build.sh stamps its own values
+     into a copy of this file on every build (the aapt flags for it are aapt2-only and
+     ignored when a manifest declares values) and refuses to finish if the stamp did
+     not take, so two builds of different sources are distinguishable. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.macchanger"
     android:versionCode="1"
     android:versionName="1.0">
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="30"/>
-    <application android:icon="@android:drawable/ic_menu_manage"
-        android:label="Mac Changer" android:allowBackup="false">
+    <!-- No android:icon: the launcher uses the system default, as this app always
+         did. A framework drawable reference such as @android:drawable/ic_menu_manage
+         cannot be resolved when aapt links against an SDK android.jar - it fails with
+         "attribute value reference does not exist" - so declaring one breaks every
+         build that is not made against the phone's own framework-res.apk. An icon of
+         the app's own would need res/, which this project deliberately does not have. -->
+    <application android:label="Mac Changer" android:allowBackup="false">
         <activity android:name=".MainActivity"
             android:exported="true"
             android:label="Mac Changer"

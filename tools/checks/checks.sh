@@ -462,25 +462,33 @@ section "build identity (M8)"
 # --- 8i. the build stamps a version that changes between builds -------------
 # The build half of M8.  The old script packaged with whatever versionCode and
 # versionName the manifest happened to carry, so every APK claimed the same
-# frozen identity; aapt is now told both, per build, and the build refuses to
-# ship an APK whose packaged manifest does not carry them back.  The evidence
-# is taken from the gate lines themselves: an earlier version of this check
-# asserted "gates on both appearing in aapt dump badging" in its PASS text
-# while grepping only for the two flags, so deleting both gates left the
-# sentence standing.  Now a missing gate is a FAIL.
-_stamp_vc=$(grep -c -- '--version-code' "$ROOT/app/build.sh" 2>/dev/null)
-_stamp_vn=$(grep -c -- '--version-name' "$ROOT/app/build.sh" 2>/dev/null)
+# frozen identity.  The flags that were first used to fix that do NOT work:
+# aapt1 silently ignores --version-code/--version-name (they are aapt2 options),
+# and aapt2 itself only injects them when the manifest has none - this manifest
+# deliberately carries fallbacks.  Measured with build-tools 34: passing both
+# flags exits 0 and the packaged APK still says versionCode='1'.  So the build
+# substitutes the values into a COPY of the manifest instead, and refuses to
+# finish unless the packaged APK carries them back.  This check requires the
+# computation, the substitution and BOTH read-back gates: dropping any of them
+# leaves an APK whose identity is the manifest's frozen one, or one that was
+# never verified to have been stamped.
+_stamp_vc=$(grep -c 'VC=${VERSION_CODE' "$ROOT/app/build.sh" 2>/dev/null)
+_stamp_vn=$(grep -c 'VN=${VERSION_NAME' "$ROOT/app/build.sh" 2>/dev/null)
+_subst=$(grep -c 'android:versionCode=' "$ROOT/app/build.sh" 2>/dev/null)
 _vc_gate=$(grep -cF "versionCode='\$VC'" "$ROOT/app/build.sh" 2>/dev/null)
 _vn_gate=$(grep -cF "versionName='\$VN'" "$ROOT/app/build.sh" 2>/dev/null)
-if [ "$_stamp_vc" -gt 0 ] && [ "$_stamp_vn" -gt 0 ] && [ "$_vc_gate" -gt 0 ] && [ "$_vn_gate" -gt 0 ]; then
+if [ "$_stamp_vc" -gt 0 ] && [ "$_stamp_vn" -gt 0 ] && [ "$_subst" -gt 0 ] && [ "$_vc_gate" -gt 0 ] && [ "$_vn_gate" -gt 0 ]; then
     report "the build stamps a per-build versionCode and versionName (M8)" PROOF pass \
-        "app/build.sh hands both to aapt and reads them back out of the packaged manifest: $(grep -nF -e "--version-code" -e "versionCode='\$VC'" "$ROOT/app/build.sh" | sed 's|^|app/build.sh:|' | tr '\n' ' ')$(grep -nF "versionName='\$VN'" "$ROOT/app/build.sh" | sed 's|^| app/build.sh:|' | tr '\n' ' ')"
+        "app/build.sh computes both per build, substitutes them into a copy of the manifest and reads them back out of the packaged manifest: $(grep -nF -e 'VC=${VERSION_CODE' -e 'android:versionCode=' -e "versionCode='\$VC'" -e "versionName='\$VN'" "$ROOT/app/build.sh" | sed 's|^|app/build.sh:|' | tr '\n' ' ')"
 elif [ "$_stamp_vc" -eq 0 ] || [ "$_stamp_vn" -eq 0 ]; then
     report "the build stamps a per-build versionCode and versionName (M8)" PROOF fail \
-        "app/build.sh passes --version-code $_stamp_vc time(s) and --version-name $_stamp_vn time(s): the APK would carry the manifest's frozen identity again"
+        "app/build.sh computes a per-build versionCode $_stamp_vc time(s) and versionName $_stamp_vn time(s): the APK would carry the manifest's frozen identity again"
+elif [ "$_subst" -eq 0 ]; then
+    report "the build stamps a per-build versionCode and versionName (M8)" PROOF fail \
+        "app/build.sh computes a per-build version but never substitutes it into the manifest ($_subst substitution site(s)), so the packaged APK carries the manifest's frozen identity - the aapt flags people reach for here are aapt2-only and are ignored"
 else
     report "the build stamps a per-build versionCode and versionName (M8)" PROOF fail \
-        "app/build.sh passes --version-code $_stamp_vc time(s) and --version-name $_stamp_vn time(s) to aapt, but never compares them against 'aapt dump badging' (versionCode gate: $_vc_gate, versionName gate: $_vn_gate): an aapt that ignored the flags would be packaged silently"
+        "app/build.sh stamps the manifest, but never compares the result against 'aapt dump badging' (versionCode gate: $_vc_gate, versionName gate: $_vn_gate): an aapt that dropped the stamp would be packaged silently"
 fi
 
 # --- 8j. the DEVICE card reports the app's own version (M8, app half) -------

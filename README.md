@@ -232,6 +232,12 @@ means it *is* the known-bad pre-fix build from the top of this page, so do not i
 the file. The `keytool`, `aapt` and `apksigner` checks, the certificate record, and why no v2/v3 signature can be relied on
 at all on Android 5.0–6.0 (API 21–23) are in [docs/APP.md](docs/APP.md).
 
+A **fixed** APK, when one has been published, is on the
+[Releases page](https://github.com/MostafaAshry513/macchanger-android/releases). Each is built by
+`.github/workflows/build.yml` from a tagged commit on GitHub's runners, signed with the maintainer's own key — not the debug
+key above — and its release notes carry the APK SHA-256 and the signer certificate SHA-256 to check it against. If there is
+no release yet, build it yourself; the app you build is the same code and takes the same three commands.
+
 * **The two signing identities cannot replace each other.** The prebuilt was signed with a debug keystore that shipped with
 its password published — **treat it as compromised**; a matching fingerprint proves which key signed a file, not that this
 project produced it, so do not pin it. Your build is signed with **your** keystore, and `pm install -r` between the two fails

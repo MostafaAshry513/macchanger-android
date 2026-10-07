@@ -289,8 +289,28 @@ fi
 VC=${VERSION_CODE:-$(date +%Y%m%d)}
 VN=${VERSION_NAME:-1.0+$GIT_REV}
 echo "      versionCode $VC / versionName $VN"
-aapt package -f -M AndroidManifest.xml -I "$AJ" -I "$FRAMEWORK" \
-  --version-code "$VC" --version-name "$VN" -F app-unsigned.apk
+# The version stamp is applied to a COPY of the manifest, because the flags that do
+# this do not work here: aapt1 silently ignores --version-code/--version-name (they
+# are aapt2 options), and aapt2 itself only injects them when the manifest has none,
+# which this one deliberately does not rely on - it carries fallbacks. Substituting
+# the values works with whatever aapt the device ships, and the gates below prove the
+# stamp took effect in the packaged APK.
+#
+# The copy must be NAMED AndroidManifest.xml: aapt1 refuses any other basename with
+# "No AndroidManifest.xml file found", whatever the path. Hence a directory of its
+# own rather than a suffixed filename.
+_esc() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
+STAMP_DIR=build/stamp
+mkdir -p "$STAMP_DIR"
+STAMPED=$STAMP_DIR/AndroidManifest.xml
+sed -e "s|\(android:versionCode=\)\"[^\"]*\"|\1\"$(_esc "$VC")\"|" \
+    -e "s|\(android:versionName=\)\"[^\"]*\"|\1\"$(_esc "$VN")\"|" \
+    AndroidManifest.xml > "$STAMPED"
+grep -qF "android:versionCode=\"$VC\"" "$STAMPED" \
+  || die "cannot stamp versionCode $VC: AndroidManifest.xml has no android:versionCode attribute to replace"
+grep -qF "android:versionName=\"$VN\"" "$STAMPED" \
+  || die "cannot stamp versionName $VN: AndroidManifest.xml has no android:versionName attribute to replace"
+aapt package -f -M "$STAMPED" -I "$AJ" -I "$FRAMEWORK" -F app-unsigned.apk
 cp build/dex/classes.dex ./classes.dex
 aapt add app-unsigned.apk classes.dex >/dev/null
 rm -f classes.dex
@@ -326,8 +346,21 @@ fi
 if ! grep -q '^launchable-activity' build/badging.txt; then
   die "gate: the built manifest declares no launchable activity"
 fi
-if ! grep -qE "^application: .*icon='[^']" build/badging.txt && ! grep -q '^application-icon' build/badging.txt; then
-  die "gate: the built manifest declares no application icon (see android:icon in AndroidManifest.xml). An empty icon='' does not pass this gate"
+# An application icon is NOT required: with no android:icon the launcher uses the
+# system default, which is what this app has always had. What must never pass is an
+# icon DECLARED in the manifest that resolves to nothing (icon=''), which is the
+# defect this gate was added for. Declaring one is only safe against a real
+# framework-res.apk, because aapt cannot resolve @android:drawable/... when it links
+# against an SDK android.jar - the off-device and CI builds both do.
+#
+# The match is the attribute form (android:icon=), so prose about icons in an XML
+# comment cannot trip it.
+if grep -qE 'android:icon[[:space:]]*=' AndroidManifest.xml; then
+  if ! grep -qE "^application: .*icon='[^']" build/badging.txt && ! grep -q '^application-icon' build/badging.txt; then
+    die "gate: AndroidManifest.xml declares android:icon but the packaged manifest has none (icon=''): the reference did not resolve, so the app would install with no icon"
+  fi
+else
+  echo "      icon:       none declared - the launcher shows the system default"
 fi
 if ! grep -qF "versionCode='$VC'" build/badging.txt; then
   die "gate: versionCode stamping did not take (wanted $VC) - this aapt ignores --version-code"
@@ -391,5 +424,8 @@ echo "  APK SHA-256 $APK_SHA"
 echo "  Publish the APK SHA-256 and the signer certificate SHA-256 with every release."
 echo "  Note: on API 21-23 the platform ignores the v2/v3 signatures (Janus,"
 echo "  CVE-2017-13156), so only the v1 JAR signature protects the APK there."
-echo "BUILT: $(pwd)/$OUT"
+case "$OUT" in
+  /*) echo "BUILT: $OUT" ;;
+  *)  echo "BUILT: $(pwd)/$OUT" ;;
+esac
 ls -la "$OUT"

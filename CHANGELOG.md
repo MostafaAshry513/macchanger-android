@@ -158,3 +158,28 @@ Behaviour the next build changes (documentation in `README.md` and
   longer be written back with exit 0; `wifi` exits `9` when the restart cannot be
   observed rather than reporting success; and a second positional argument is a
   usage error instead of silently replacing the first.
+* **The build now works off the phone, and CI builds it.**
+  `.github/workflows/build.yml` runs the gates and builds the APK on GitHub's
+  runners; a `v*` tag attaches it to a Release. Three defects had to be fixed first,
+  all found by actually running the build rather than reading it:
+  * the manifest's launcher icon was `@android:drawable/ic_menu_manage`, which
+    `aapt1` cannot resolve when it links against an SDK `android.jar` (it fails with
+    "attribute value reference does not exist", on API 30 and API 34 alike). It only
+    ever worked against the phone's own `framework-res.apk`, so every off-device
+    build failed. The icon attribute is gone — the launcher shows the system default,
+    as this app always did before the audit — and `build.sh` now fails only on an
+    icon that is *declared* and fails to resolve, which is the defect that gate was
+    added for.
+  * the `versionCode`/`versionName` stamp used `aapt --version-code/--version-name`,
+    which `aapt1` silently ignores (they are `aapt2` options, and `aapt2` only injects
+    them when the manifest has none — this one carries fallbacks). Measured with
+    build-tools 34: the flags exit 0 and the packaged APK still says
+    `versionCode='1'`. The stamp is now substituted into a copy of the manifest, named
+    `AndroidManifest.xml` in a directory of its own because `aapt1` refuses any other
+    basename, and the read-back gates prove it took: a build of this source reports
+    `versionCode 20261007 / versionName 1.0+<commit>[-dirty]` in the packaged APK.
+  * `build.sh` printed `BUILT: <cwd>/<OUT>` even when `OUT` was absolute, naming a
+    path that did not exist.
+* `tools/checks/checks.sh` now requires that working stamping mechanism (computation,
+  substitution and both read-back gates) instead of the aapt flags that look right
+  but do nothing.

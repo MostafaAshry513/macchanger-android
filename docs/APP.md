@@ -103,17 +103,29 @@ KS=/path/to/ks.p12 KS_PASS='...' ./build.sh      # -> app-signed.apk
   `compileSdkVersion 30` (codename `11`) in its compiled manifest. A newer platform
   also compiles this source — the runtime minimum is API 21 — but an older one is
   not the level this project is built and shipped against.
-* Also required: the device's own `/system/framework/framework-res.apk` (or a copy,
-  via `FRAMEWORK=`), because `aapt` needs the platform's resource table and this
-  project deliberately has no `res/` directory of its own.
+* The second `-I` for `aapt` is `FRAMEWORK`, which defaults to the device's own
+  `/system/framework/framework-res.apk` (override it with `FRAMEWORK=`). This
+  project has no `res/` of its own, so that table is where the manifest's
+  `@android:` style and theme come from. An SDK `android.jar` works there too —
+  verified: `AJ="$SDK/platforms/android-30/android.jar" FRAMEWORK="$AJ" ./build.sh`
+  builds on a plain Linux box with no device attached, and so does API 34.
+  What does **not** work off-device is an `@android:` **drawable** reference:
+  `aapt1` rejects it with `attribute value reference does not exist`, whatever the
+  platform version. That is why the manifest declares no launcher icon, and why
+  `build.sh` only refuses an icon that is *declared* and fails to resolve.
 * Signing is mandatory and explicit: `KS` (keystore) and `KS_PASS` are required;
   `KS_TYPE` defaults to `PKCS12`; `RELEASE_CERT_SHA256` optionally makes the build
   refuse to finish unless the signed APK's certificate matches the value you
   publish.
 * The script stamps `versionCode` (default `$(date +%Y%m%d)`) and `versionName`
-  (default `1.0+<git-rev>[-dirty]`), fails on `javac` errors, checks the packaged
-  APK (contents, alignment, badging, icon, zero permissions), and prints the **APK
-  SHA-256 and signer certificate SHA-256** at the end.
+  (default `1.0+<git-rev>[-dirty]`) by substituting them into a copy of the
+  manifest, because the obvious way does not work: `aapt1` silently ignores
+  `--version-code`/`--version-name` (they are `aapt2` options) and `aapt2` only
+  injects them when the manifest has none. Verified with build-tools 34: passing
+  both flags exits 0 and the packaged APK still says `versionCode='1'`.
+* It fails on `javac` errors, checks the packaged APK (contents, alignment,
+  badging, that a *declared* icon actually resolved, zero permissions), and prints
+  the **APK SHA-256 and signer certificate SHA-256** at the end.
 
 **Which of the two signing identities your build gets.** There are exactly two in
 play, and they are different keys:
@@ -134,6 +146,32 @@ what to copy off the device first.
 
 Record both hashes and the source commit in `CHANGELOG.md` when you publish a build;
 that is the only way a user can tell your build from any other.
+
+## Or let CI build it
+
+`.github/workflows/build.yml` does the same build on GitHub's runners, so nobody
+needs a phone, a PC or a toolchain to get an APK of this source:
+
+* the **`gates`** job runs everything that needs no Android SDK — the stub compile
+  and its negative controls, the hazard and doc-versus-code checks, shell syntax,
+  and the CLI behavioural suite (which needs root and a private mount namespace,
+  hence `sudo` and `busybox-static` in that job and not in the others);
+* the **`apk`** job installs `build-tools` and a platform jar, builds with
+  `app/build.sh` using `AJ`/`FRAMEWORK` pointed at the SDK, then verifies the
+  result independently (`aapt dump badging` must show a launchable activity and
+  **no** `uses-permission`; `apksigner verify` must print the signer) and uploads
+  the APK with its SHA-256 and badging as a downloadable artifact;
+* a push to a **tag** additionally attaches the APK to a GitHub Release.
+
+Signing in CI comes from the repository secrets `KEYSTORE_BASE64` (the keystore,
+base64-encoded) and `KEYSTORE_PASSWORD`; the optional repository variable
+`RELEASE_CERT_SHA256` makes the build refuse to finish unless the result is signed
+by the expected certificate. **Without those secrets the workflow still runs, but it
+signs with a throwaway key generated inside the run and names the artifact
+`MacChanger-TEST-ONLY.apk`** — that APK cannot update an installed `com.macchanger`
+and must not be distributed. A tag build refuses to run at all without the real key,
+because an APK signed by a key that exists only inside one CI run can never be
+updated afterwards.
 
 ## Use the app
 

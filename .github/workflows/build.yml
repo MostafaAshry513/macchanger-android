@@ -1,0 +1,219 @@
+# Build and verify MacChanger on GitHub's runners.
+#
+# Two jobs. "gates" runs the offline checks that need no Android SDK at all; "apk"
+# installs build-tools + a platform jar and builds the app with app/build.sh, exactly
+# as on a phone in Termux. A tag additionally publishes the APK as a Release.
+#
+# The signing key never lives in this repository: it comes from the repository
+# secrets KEYSTORE_BASE64 and KEYSTORE_PASSWORD. Without them the build still runs,
+# but with a THROWAWAY key, the artefact is named so nobody mistakes it for a
+# distributable, and a tag build refuses to run at all - a release signed with a key
+# that exists only inside a CI run can never be updated afterwards.
+#
+# Why the manifest declares no launcher icon, and why the framework jar is the same
+# file as android.jar: see the comments in app/AndroidManifest.xml and the "Build"
+# section of docs/APP.md. In short, aapt1 cannot resolve an @android: drawable
+# reference against an SDK android.jar, so a build here would fail outright.
+
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The platform the app declares in its manifest (targetSdkVersion 30). A newer jar
+  # builds too - both were tested - but this is the one the app targets.
+  API: '30'
+  BUILD_TOOLS: '34.0.0'
+
+jobs:
+  gates:
+    name: offline gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: the app compiles against the android stubs
+        run: sh tools/stubcompile/check.sh
+
+      - name: that gate can still fail (negative controls)
+        run: sh tools/stubcompile/selftest.sh
+
+      - name: hazards and doc-versus-code checks
+        run: sh tools/checks/checks.sh
+
+      - name: shell syntax
+        run: |
+          sh -n cli/macchanger.sh
+          bash -n app/build.sh
+
+      # The behavioural suite drives the real CLI against synthetic calibration files
+      # inside a private mount namespace, so it needs root and util-linux unshare.
+      # That is why it is not part of the pure gates above.
+      - name: the CLI against synthetic devices
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq busybox-static unshare
+          sh tools/clitest/clitest.sh
+
+  apk:
+    name: build the APK
+    runs-on: ubuntu-latest
+    needs: gates
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: install the SDK pieces this build uses
+        run: sdkmanager --install "build-tools;$BUILD_TOOLS" "platforms;android-$API"
+
+      # ------------------------------------------------------------------ signing
+      # No password literal appears anywhere in this file: the throwaway password is
+      # generated at run time, and the release password comes from a secret. A gate in
+      # tools/checks/checks.sh enforces exactly that, and caught the first draft of
+      # this file. The release password is deliberately NOT exported as a job output,
+      # because run details are public on a public repository.
+      - name: choose the signing key
+        id: key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_BASE64:-}" ] && [ -n "${KEYSTORE_PASSWORD:-}" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing.p12"
+            echo "path=$RUNNER_TEMP/signing.p12" >> "$GITHUB_OUTPUT"
+            echo "have=yes" >> "$GITHUB_OUTPUT"
+            echo "Signing with the repository's release keystore."
+          else
+            PASS=$(head -c 32 /dev/urandom | base64 | tr -d '/+=\n')
+            printf '%s' "$PASS" > "$RUNNER_TEMP/throwaway.pass"
+            chmod 600 "$RUNNER_TEMP/throwaway.pass"
+            keytool -genkeypair -keystore "$RUNNER_TEMP/throwaway.p12" -storetype PKCS12 \
+              -alias throwaway -keyalg RSA -keysize 2048 -validity 1 \
+              -storepass "$PASS" -keypass "$PASS" \
+              -dname "CN=THROWAWAY-KEY-NOT-FOR-DISTRIBUTION" 2>/dev/null
+            echo "path=$RUNNER_TEMP/throwaway.p12" >> "$GITHUB_OUTPUT"
+            echo "have=no" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No release keystore configured::Building with a throwaway key. This APK is for testing the build only: it cannot update an installed com.macchanger and must not be distributed."
+          fi
+
+      - name: a tag build must use the release keystore
+        if: startsWith(github.ref, 'refs/tags/') && steps.key.outputs.have == 'no'
+        run: |
+          echo "::error title=Refusing to publish::A tagged build must be signed with the release keystore. Set the KEYSTORE_BASE64 and KEYSTORE_PASSWORD repository secrets first."
+          exit 1
+
+      # -------------------------------------------------------------------- build
+      - name: build and sign
+        id: build
+        env:
+          KEYSTORE: ${{ steps.key.outputs.path }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          EXPECTED_CERT: ${{ vars.RELEASE_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          KS_PASS="${KEYSTORE_PASSWORD:-$(cat "$RUNNER_TEMP/throwaway.pass")}"
+          AJ="$ANDROID_SDK_ROOT/platforms/android-$API/android.jar"
+          OUT="MacChanger-${{ steps.key.outputs.have == 'yes' && 'release' || 'TEST-ONLY' }}.apk"
+          # AJ is what javac and d8 compile against; FRAMEWORK is the second -I for
+          # aapt, which is the same jar here because the only framework references in
+          # the manifest are a style and a theme.
+          AJ="$AJ" FRAMEWORK="$AJ" \
+          KS="$KEYSTORE" KS_PASS="$KS_PASS" \
+          RELEASE_CERT_SHA256="${EXPECTED_CERT:-}" \
+          OUT="$OUT" ./app/build.sh
+          echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+
+      # build.sh has 16 gates of its own; these are the headline properties, printed
+      # in the log so a reader can see them without downloading the artefact.
+      - name: verify the artefact independently
+        env:
+          KEYSTORE: ${{ steps.key.outputs.path }}
+        run: |
+          set -euo pipefail
+          APK="${{ steps.build.outputs.apk }}"
+          BT="$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS"
+          "$BT/aapt" dump badging "$APK" | tee badging.txt
+          grep -q '^launchable-activity' badging.txt \
+            || { echo "::error::the APK has no launchable activity"; exit 1; }
+          if grep -q '^uses-permission' badging.txt; then
+            echo "::error::the APK requests a permission; MacChanger ships with none"
+            exit 1
+          fi
+          "$BT/apksigner" verify --print-certs -v "$APK" | tee apksigner.txt
+          CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' apksigner.txt)
+          sha256sum "$APK" | tee "$APK.sha256"
+          {
+            echo "### MacChanger build"
+            echo
+            echo "- version: \`$(sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p" badging.txt)\` (versionCode \`$(sed -n "s/^package: .*versionCode='\([^']*\)'.*/\1/p" badging.txt)\`)"
+            echo "- APK SHA-256: \`$(cut -d' ' -f1 < "$APK.sha256")\`"
+            echo "- signer certificate SHA-256: \`$CERT\`"
+            echo "- signed with: ${{ steps.key.outputs.have == 'yes' && 'the release keystore' || 'a **throwaway** key - testing only, do not distribute' }}"
+            echo "- permissions requested: $(grep -c '^uses-permission' badging.txt || true)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.apk }}
+          path: |
+            ${{ steps.build.outputs.apk }}
+            ${{ steps.build.outputs.apk }}.sha256
+            badging.txt
+            apksigner.txt
+          if-no-files-found: error
+
+  release:
+    name: publish a tagged release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: apk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: attach the APK to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          APK=$(find dist -maxdepth 2 -name 'MacChanger-release.apk' -print -quit)
+          [ -n "$APK" ] || { echo "::error::no release-signed APK was produced"; exit 1; }
+          SHA=$(find dist -maxdepth 2 -name 'MacChanger-release.apk.sha256' -print -quit)
+          CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$(find dist -maxdepth 2 -name apksigner.txt -print -quit)")
+          gh release create "$GITHUB_REF_NAME" \
+            --title "MacChanger $GITHUB_REF_NAME" \
+            --notes "Built from $GITHUB_SHA by .github/workflows/build.yml.
+
+          - APK SHA-256: \`$(cut -d' ' -f1 < "$SHA")\`
+          - signer certificate SHA-256: \`$CERT\`
+
+          Verify before installing: \`sha256sum MacChanger-release.apk\` must print that hash, and
+          \`apksigner verify --print-certs MacChanger-release.apk\` must print that certificate. The
+          signer is the maintainer's key, not the debug key the pre-fix \`prebuilt/\` APK carries, so
+          \`pm install -r\` over that one fails with INSTALL_FAILED_UPDATE_INCOMPATIBLE - export the
+          record first (see docs/SAFETY.md)." \
+            "$APK" "$SHA"
