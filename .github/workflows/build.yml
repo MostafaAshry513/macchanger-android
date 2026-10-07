@@ -246,6 +246,7 @@ jobs:
           SHA=$(find dist -type f -name 'MacChanger-release.apk.sha256' -print -quit)
           CERT=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$(find dist -type f -name apksigner.txt -print -quit)")
           gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
             --title "MacChanger $GITHUB_REF_NAME" \
             --notes "Built from $GITHUB_SHA by .github/workflows/build.yml.
 
