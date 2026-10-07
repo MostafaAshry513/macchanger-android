@@ -1,0 +1,55 @@
+#!/bin/sh
+#
+# clitest/stubs/svc - stand-in for Android's `svc` command inside the sandbox.
+#
+# cli/macchanger.sh restarts WiFi with `svc wifi disable` / `svc wifi enable`
+# and then re-reads the interface MAC.  This stub is what stands in for the real
+# command, so a scenario can choose what the "driver" does:
+#
+#   * default: `svc wifi enable` re-reads the NVRAM image at $TEST_MAC_OFFSET
+#     and publishes those six bytes as wlan0's address, i.e. it simulates a
+#     driver that picked the written value up.  A `set` should then report
+#     success (exit 0).
+#   * TEST_SVC_NORELOAD=1: the interface keeps its old address, i.e. a driver
+#     that ignored the write.  A `set` must then report a non-zero status - the
+#     documented contract is that the status is non-zero when the change did not
+#     take effect.
+#
+# It reads and writes NOTHING outside the scenario directory: the image comes
+# from $TEST_NV_FILE and the interface address goes to $TEST_NET_DIR/wlan0/
+# address.  Both are set by clitest.sh to paths under /tmp, so this stub can
+# never touch a real calibration file or the real /sys/class/net - which matters
+# on a host where a fake /mnt/vendor/nvdata/APCFG/APRDEB/WIFI may already exist
+# from someone else's fixture.
+#
+# Every call is appended to $TEST_SVC_LOG so the suite can assert that the
+# restart really was attempted and really reloaded the value.
+
+LOG=${TEST_SVC_LOG:-/dev/null}
+NV=${TEST_NV_FILE:-/mnt/vendor/nvdata/APCFG/APRDEB/WIFI}
+NET=${TEST_NET_DIR:-/sys/class/net}
+
+echo "svc $*" >>"$LOG" 2>/dev/null
+
+case "$1 $2" in
+    'wifi enable')
+        if [ -n "${TEST_SVC_NORELOAD:-}" ]; then
+            echo "svc: TEST_SVC_NORELOAD: the driver ignored the NVRAM change" >>"$LOG" 2>/dev/null
+            exit 0
+        fi
+        off=${TEST_MAC_OFFSET:-4}
+        hex=$(dd if="$NV" bs=1 skip="$off" count=6 2>/dev/null | od -An -tx1 | tr -d ' \n')
+        if [ "${#hex}" -ne 12 ]; then
+            echo "svc: cannot re-read 6 bytes at offset $off of $NV (got '${hex}')" >>"$LOG" 2>/dev/null
+            exit 0
+        fi
+        mac=$(echo "$hex" | sed 's/\(..\)/\1:/g; s/:$//')
+        if printf '%s\n' "$mac" >"$NET/wlan0/address" 2>/dev/null; then
+            echo "svc: driver reloaded MAC $mac from NVRAM offset $off" >>"$LOG" 2>/dev/null
+        else
+            echo "svc: cannot publish $mac in $NET/wlan0/address" >>"$LOG" 2>/dev/null
+        fi
+        ;;
+esac
+
+exit 0

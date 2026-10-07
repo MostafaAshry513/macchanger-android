@@ -5,3 +5,23 @@ app-aligned.apk
 build/
 classes.dex
 *.tmp
+# Signing material must never be committed or shipped: supply it via KS/KS_PASS.
+# A signing key is the one file whose leak is not repairable by reissuing: an APK
+# signed with a different key cannot update an installed com.macchanger at all,
+# so the user must uninstall and lose the app-private NVRAM backup.
+ks.p12
+*.jks
+*.keystore
+*.p12
+*.pk8
+*.pem
+*.der
+*.key
+# The audit (AUDIT.md, audit/) quotes the removed keystore password and the
+# vulnerable code, and is not written for users.  tools/package.sh already
+# excludes it from the archive it builds; this keeps 'git add -A' + commit from
+# putting it into a history that a clone or a hand-off would then carry.  The
+# files stay in the working tree: they are the record of why this tree changed.
+AUDIT.md
+audit/
+
