@@ -66,6 +66,18 @@ command -v "$RUNSHELL" >/dev/null 2>&1 || [ -x "$RUNSHELL" ] \
 # Everything below needs CAP_SYS_ADMIN and uid 0.
 [ "$(id -u)" = 0 ] || setup_fail "must be uid 0 inside the namespace"
 
+# The three paths the CLI hardcodes are hidden with tmpfs, which requires each to
+# exist first. On Android, and on a typical Linux box, /mnt, /data and /sys all do;
+# on a CI runner /data does not, and the suite failed there with "cannot mount tmpfs
+# on /data" - found by running it in CI, not by reading it. Creating the directory is
+# harmless: the tmpfs hides it for the life of this namespace, and it is empty.
+mount_point() { # $1 = path that must exist before tmpfs can cover it
+    [ -d "$1" ] || mkdir -p "$1" || setup_fail "cannot create the mount point $1"
+}
+mount_point /mnt
+mount_point /data
+mount_point /sys
+
 # --- the calibration file ---------------------------------------------------
 mount -t tmpfs tmpfs /mnt 2>/dev/null || setup_fail "cannot mount tmpfs on /mnt"
 mkdir -p /mnt/vendor/nvdata/APCFG/APRDEB || setup_fail "cannot create the APCFG/APRDEB path"
