@@ -159,7 +159,10 @@ jobs:
           set -euo pipefail
           KS_PASS="${KEYSTORE_PASSWORD:-$(cat "$RUNNER_TEMP/throwaway.pass")}"
           AJ="$ANDROID_SDK_ROOT/platforms/android-$API/android.jar"
-          OUT="MacChanger-${{ steps.key.outputs.have == 'yes' && 'release' || 'TEST-ONLY' }}.apk"
+          # Absolute: build.sh cds into app/ and resolves a relative OUT against it,
+          # so a bare filename lands in app/ and the steps below would not find it
+          # (the first run to get this far failed exactly that way).
+          OUT="$GITHUB_WORKSPACE/MacChanger-${{ steps.key.outputs.have == 'yes' && 'release' || 'TEST-ONLY' }}.apk"
           # The SDK keeps aapt/d8/zipalign/apksigner in build-tools; build.sh expects
           # all four on PATH, because that is where Termux's packages put them. It
           # refuses the build with a named list when they are missing, which is how
