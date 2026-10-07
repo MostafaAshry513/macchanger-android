@@ -66,13 +66,16 @@ jobs:
           bash -n app/build.sh
 
       # The behavioural suite drives the real CLI against synthetic calibration files
-      # inside a private mount namespace, so it needs root and util-linux unshare.
-      # That is why it is not part of the pure gates above.
+      # inside a private mount namespace, so it needs root and mount privileges.
+      # unshare(1) is part of util-linux, which the runner already has - there is no
+      # 'unshare' package to install (asking for one fails with apt exit 100, as the
+      # first CI run found). busybox-static is a real package and is needed, because
+      # the CLI hard-requires busybox.
       - name: the CLI against synthetic devices
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq busybox-static unshare
-          sh tools/clitest/clitest.sh
+          sudo apt-get install -y -qq busybox-static
+          sudo sh tools/clitest/clitest.sh
 
   apk:
     name: build the APK
