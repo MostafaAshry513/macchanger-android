@@ -183,6 +183,20 @@ Behaviour the next build changes (documentation in `README.md` and
 * `tools/checks/checks.sh` now requires that working stamping mechanism (computation,
   substitution and both read-back gates) instead of the aapt flags that look right
   but do nothing.
+* The first CI runs were worth more than the review that produced the workflow: they
+  found six things that no amount of reading had, listed here because each is now a
+  documented reason for a line of `.github/workflows/build.yml` or a fix in `tools/`.
+  `tools/stubcompile/selftest.sh` needed a sibling `../.pristine/` that only existed in
+  the audit container (fixed: the baseline comes from the root commit, or is skipped);
+  `tools/clitest/sandbox.sh` assumed `/data` exists before mounting tmpfs on it (fixed:
+  the mount point is created); there is no `unshare` package to install because
+  `unshare(1)` is part of util-linux, and the namespace suite needs `sudo`;
+  `android-actions/setup-android@v3` now crashes trying to install the retired `tools`
+  package, so the workflow calls `sdkmanager` directly; `app/build.sh` cannot be
+  executed as `./build.sh` off a phone at all, because its shebang is Termux's own bash
+  (the documented off-device invocation is `bash app/build.sh`); and its `OUT` is
+  resolved against `app/`, so a CI that wants the APK elsewhere must pass an absolute
+  path.
 * `tools/stubcompile/selftest.sh` required a sibling `../.pristine/` directory for its
   second control, which only ever existed in the container the harness was written
   in: the control failed in every fresh clone, and CI found it on the first run. It
