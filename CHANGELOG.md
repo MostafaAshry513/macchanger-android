@@ -14,9 +14,49 @@ matters more here than for most projects, because this app runs as root and the
 first version shipped its signing key with its password published beside it
 (see `SECURITY.md`).
 
-The newest entry is the newest *released* APK. Fixes that have not been built and
-signed yet are listed under "Not yet released" below it and carry no hashes on
-purpose: an unbuilt source tree has no artefact to hash.
+The newest entry is the newest *released* APK. The change set that went into it is
+listed under it, and every APK published from this project carries both hashes —
+an unbuilt source tree has no artefact to hash, so nothing is listed without one.
+
+---
+
+## versionCode 20261007 — versionName 1.0+6ca70ae — the released APK
+
+* File: `MacChanger-release.apk`, attached to
+  [the v1.0.0 release](https://github.com/MostafaAshry513/macchanger-android/releases/tag/v1.0.0)
+* APK SHA-256:
+  `fa3ac5f26c6c81febe6f3d67b042756e2f9256fdacf2312f5d402558b6a68ebc`
+* Signer certificate SHA-256:
+  `41:49:05:58:E9:73:7F:61:BD:7A:67:18:9A:D8:FB:11:3E:58:3C:61:8D:89:5E:A1:A2:5F:78:2A:0F:A0:94:9B`
+  (`CN=MacChanger release, OU=Android, O=MacChanger, C=US`, 4096-bit RSA,
+  self-signed, valid to 2054). The same value is pinned in the repository variable
+  `RELEASE_CERT_SHA256`, and `app/build.sh` refuses to finish unless the signed APK
+  carries it.
+* Source: commit `6ca70ae1ecc8c2a9e60a043a71cc36d55e29c371`, built, gated and
+  verified by `.github/workflows/build.yml` on GitHub's runners. The private key is
+  **not** in this repository: CI signs with the `KEYSTORE_BASE64` and
+  `KEYSTORE_PASSWORD` secrets.
+* Compiled manifest: `versionCode 20261007`, `versionName 1.0+6ca70ae`,
+  `minSdkVersion 21`, `targetSdkVersion 30`, `compileSdkVersion 30` (codename `11`),
+  package `com.macchanger`, and **no `<uses-permission>` element**.
+* Contents: every fix in `AUDIT.md` — the change set listed below.
+* **This APK cannot replace the prebuilt above.** They are signed by different keys,
+  so `pm install -r` fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, and the only
+  way through is an uninstall — which deletes the app's private data. Export the
+  record first (`docs/SAFETY.md`).
+
+**Verification — against the file a user actually downloads:**
+
+```
+$ sha256sum MacChanger-release.apk
+fa3ac5f26c6c81febe6f3d67b042756e2f9256fdacf2312f5d402558b6a68ebc  MacChanger-release.apk
+
+$ apksigner verify --print-certs MacChanger-release.apk
+Signer #1 certificate SHA-256 digest: 41490558e9737f61bd7a67189ad8fb113e583c618d895ea1a25f782a0fa0949b
+```
+
+`apksigner` prints that digest without separators; it is the same certificate as the
+colon-separated fingerprint above.
 
 ---
 
@@ -74,28 +114,20 @@ before anything else: `README.md` describes the export and recovery paths.
 
 ---
 
-## Not yet released — no APK has been built or signed for this source
+## What went into versionCode 20261007 — the change set
 
-The working tree carries the fixes from `AUDIT.md`. **No APK has been built
-from it here** (this environment has no `aapt`/`d8`/`zipalign`/`apksigner`), so
-there is nothing to hash and nothing to publish. When the maintainer builds it
-on-device, `app/build.sh` prints the APK SHA-256 and the signer certificate
-SHA-256 and this section must be turned into a real entry with both, keyed to
-the stamped `versionCode`, plus the source commit.
+This was listed as "not yet released" until the entry above was built and signed.
+It is the change set that release contains, taken from `AUDIT.md`/`audit/PLAN.json`
+and re-diffed against the tree before the tag was pushed rather than assumed to
+have landed: this file is the only place a user is told what a `versionCode`
+contains, so an inaccurate list is worse than a short one.
 
-The list below is the intended change set, taken from `AUDIT.md`/`audit/PLAN.json`
-— it is what the source in this tree is being fixed *to*, not a claim that has
-already been verified against a built artefact. **Re-diff the tree and drop
-anything that did not land before you publish the entry**: this file is the only
-place a user is told what a new `versionCode` contains, so an inaccurate list is
-worse than a short one.
+The release is signed by the identity recorded above and **cannot replace
+`versionCode 1` in place**: `pm install -r` fails with
+`INSTALL_FAILED_UPDATE_INCOMPATIBLE`, and the only way out is an uninstall, which
+deletes the app's private data. Export the record first.
 
-The next build will be signed by a key supplied through `KS` and is **not** the
-identity above, so it cannot replace `versionCode 1` in place: `pm install -r`
-fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` and the only way out is an
-uninstall, which deletes the app's private data. Export the record first.
-
-Behaviour the next build changes (documentation in `README.md` and
+Behaviour this release changes (documentation in `README.md` and
 `SECURITY.md` describes the new behaviour, not the old):
 
 * The pre-write NVRAM image is copied into **app-private storage**, length-checked
